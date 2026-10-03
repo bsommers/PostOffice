@@ -21,17 +21,22 @@ class TestPostOfficeScaffold(unittest.TestCase):
         router.register_client(amqp_client)
         router.register_client(kafka_client)
 
-        router.add_route("mqtt_1", "sensor/data", "kafka_1", "sensor_events")
+        router.add_route("mqtt_1", "sensor/data", "kafka_1", "sensor_events", key=b"iot", partition=1)
+        router.add_route("kafka_1", "sensor_events", "amqp_1", "amqp_queue", exchange="test_exchange", delivery_mode=2)
 
         self.assertEqual(len(router.clients), 3)
         self.assertIn(("mqtt_1", "sensor/data"), router.routes)
+        self.assertIn(("kafka_1", "sensor_events"), router.routes)
 
-        # Test routing behavior
+        # Test routing behavior (MQTT -> Kafka with specific Kafka kwargs)
         kafka_client.publish = MagicMock()
-
         router.route("mqtt_1", "sensor/data", b'{"temp": 25}')
+        kafka_client.publish.assert_called_once_with("sensor_events", b'{"temp": 25}', key=b"iot", partition=1)
 
-        kafka_client.publish.assert_called_once_with("sensor_events", b'{"temp": 25}')
+        # Test routing behavior (Kafka -> AMQP with specific AMQP kwargs)
+        amqp_client.publish = MagicMock()
+        router.route("kafka_1", "sensor_events", b'{"temp": 25}')
+        amqp_client.publish.assert_called_once_with("amqp_queue", b'{"temp": 25}', exchange="test_exchange", delivery_mode=2)
 
 if __name__ == '__main__':
     unittest.main()

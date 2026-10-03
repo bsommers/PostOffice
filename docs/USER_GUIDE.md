@@ -37,20 +37,37 @@ python src/postoffice/main.py
 
 ## Adding New Routes
 
-The `Router` class (in `src/postoffice/router.py`) handles the forwarding of messages from one client/topic pair to another.
+The `Router` class (in `src/postoffice/router.py`) handles the forwarding of messages from one client/topic pair to another. It supports specific broker kwargs during publishing by passing them directly in `add_route`.
 
 To configure a new route, edit the routing rules in `main.py`:
 
 ```python
 # Route messages from the 'mqtt_1' client on 'home/temperature'
-# to the 'kafka_1' client on the 'telemetry' topic.
+# to the 'kafka_1' client on the 'telemetry' topic on partition 1.
 router.add_route(
     source_client="mqtt_1",
     source_topic="home/temperature",
     target_client="kafka_1",
-    target_topic="telemetry"
+    target_topic="telemetry",
+    key=b"iot_sensor",
+    partition=1
+)
+
+# Route Kafka telemetry to AMQP using a fanout exchange with persistent delivery
+router.add_route(
+    source_client="kafka_1",
+    source_topic="telemetry",
+    target_client="amqp_1",
+    target_topic="",
+    exchange="events_fanout",
+    delivery_mode=2
 )
 ```
+
+### Supported Publish Route Parameters
+- **MQTT**: `qos` (int), `retain` (bool)
+- **AMQP**: `exchange` (str), `delivery_mode` (int: 1=Transient, 2=Persistent)
+- **Kafka**: `key` (bytes), `partition` (int)
 
 ## Running Tests
 

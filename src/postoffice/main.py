@@ -29,27 +29,54 @@ def main():
     amqp_client.connect()
     kafka_client.connect()
 
-    # Setup subscriptions (only if connected successfully, we mock for robustness during error)
+    # Setup subscriptions
     try:
-        mqtt_client.subscribe("sensor/data")
+        # Subscribe to MQTT with QoS 1
+        mqtt_client.subscribe("sensor/data", qos=1)
     except Exception as e:
         logger.error(f"MQTT subscribe error: {e}")
 
     try:
-        amqp_client.subscribe("amqp_queue")
+        # Subscribe to AMQP using a fanout exchange
+        amqp_client.subscribe("broadcast.events", exchange="events_fanout", exchange_type="fanout")
     except Exception as e:
         logger.error(f"AMQP subscribe error: {e}")
 
     try:
+        # Subscribe to a generic Kafka topic
         kafka_client.subscribe("kafka_topic")
     except Exception as e:
         logger.error(f"Kafka subscribe error: {e}")
 
     # Setup routing rules
-    # Route MQTT to Kafka
-    router.add_route("mqtt_1", "sensor/data", "kafka_1", "sensor_events")
-    # Route Kafka to AMQP
-    router.add_route("kafka_1", "kafka_topic", "amqp_1", "amqp_queue")
+    # Route MQTT to a specific AMQP topic exchange with persistent delivery
+    router.add_route(
+        source_client="mqtt_1",
+        source_topic="sensor/data",
+        target_client="amqp_1",
+        target_topic="sensor.telemetry",
+        exchange="iot_topic_exchange",
+        delivery_mode=2
+    )
+
+    # Route Kafka to AMQP fanout
+    router.add_route(
+        source_client="kafka_1",
+        source_topic="kafka_topic",
+        target_client="amqp_1",
+        target_topic="",
+        exchange="events_fanout"
+    )
+
+    # Route AMQP back to Kafka on a specific partition with a specific key
+    router.add_route(
+        source_client="amqp_1",
+        source_topic="broadcast.events",
+        target_client="kafka_1",
+        target_topic="processed_events",
+        key=b"amqp_source",
+        partition=0
+    )
 
     logger.info("PostOffice running. Press Ctrl+C to stop.")
 

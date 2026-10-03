@@ -42,7 +42,7 @@ class KafkaClient(BaseClient):
         if self.producer:
             self.producer.flush()
 
-    def subscribe(self, topic: str):
+    def subscribe(self, topic: str, **kwargs):
         if not self.consumer:
             logger.error(f"{self.name}: Cannot subscribe to {topic}, consumer is not connected.")
             return
@@ -52,7 +52,7 @@ class KafkaClient(BaseClient):
                 self._pending_subscriptions.append(topic)
                 logger.info(f"{self.name} queued subscription for {topic}")
 
-    def publish(self, topic: str, message: bytes):
+    def publish(self, topic: str, message: bytes, **kwargs):
         if not self.producer:
             logger.error(f"{self.name}: Cannot publish to {topic}, producer is not connected.")
             return
@@ -61,7 +61,18 @@ class KafkaClient(BaseClient):
             if err is not None:
                 logger.error(f"Message delivery failed: {err}")
 
-        self.producer.produce(topic, message, callback=delivery_report)
+        # Handle specific kafka publish features
+        key = kwargs.get("key", None)
+        partition = kwargs.get("partition", -1)
+
+        produce_kwargs = {"topic": topic, "value": message, "callback": delivery_report}
+
+        if key is not None:
+            produce_kwargs["key"] = key
+        if partition != -1:
+            produce_kwargs["partition"] = partition
+
+        self.producer.produce(**produce_kwargs)
         self.producer.poll(0)
 
     def _consume_loop(self):
@@ -81,4 +92,10 @@ class KafkaClient(BaseClient):
                     logger.error(f"Kafka error: {msg.error()}")
                 continue
 
-            self.on_message(msg.topic(), msg.value())
+            self.on_message(
+                msg.topic(),
+                msg.value(),
+                key=msg.key(),
+                partition=msg.partition(),
+                offset=msg.offset()
+            )
