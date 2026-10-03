@@ -31,7 +31,11 @@ class AmqpClient(BaseClient):
     def disconnect(self):
         self._stop_event.set()
         if self.connection and self.connection.is_open:
-            self.connection.close()
+            # Need to close connection safely from the thread it belongs to
+            try:
+                self.connection.add_callback_threadsafe(self.connection.close)
+            except Exception as e:
+                logger.error(f"Error scheduling AMQP close: {e}")
         if self.thread:
             self.thread.join(timeout=2)
 

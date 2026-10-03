@@ -14,6 +14,8 @@ class KafkaClient(BaseClient):
         self.thread = None
         self._stop_event = threading.Event()
         self.subscribed_topics = []
+        self._subscribe_lock = threading.Lock()
+        self._pending_subscriptions = []
 
     def connect(self):
         try:
@@ -45,10 +47,10 @@ class KafkaClient(BaseClient):
             logger.error(f"{self.name}: Cannot subscribe to {topic}, consumer is not connected.")
             return
 
-        if topic not in self.subscribed_topics:
-            self.subscribed_topics.append(topic)
-            self.consumer.subscribe(self.subscribed_topics)
-            logger.info(f"{self.name} subscribed to {topic}")
+        with self._subscribe_lock:
+            if topic not in self.subscribed_topics and topic not in self._pending_subscriptions:
+                self._pending_subscriptions.append(topic)
+                logger.info(f"{self.name} queued subscription for {topic}")
 
     def publish(self, topic: str, message: bytes):
         if not self.producer:
@@ -64,6 +66,13 @@ class KafkaClient(BaseClient):
 
     def _consume_loop(self):
         while not self._stop_event.is_set():
+            with self._subscribe_lock:
+                if self._pending_subscriptions:
+                    self.subscribed_topics.extend(self._pending_subscriptions)
+                    self.consumer.subscribe(self.subscribed_topics)
+                    logger.info(f"{self.name} applied subscriptions: {self._pending_subscriptions}")
+                    self._pending_subscriptions = []
+
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue

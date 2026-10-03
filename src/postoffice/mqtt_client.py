@@ -9,7 +9,7 @@ class MqttClient(BaseClient):
         super().__init__(name, router)
         self.host = host
         self.port = port
-        self.client = mqtt.Client(client_id=self.name)
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.name)
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.subscribed_topics = []
