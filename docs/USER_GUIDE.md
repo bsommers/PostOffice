@@ -9,14 +9,14 @@ PostOffice is a multi-protocol messaging router designed to act as a bridge betw
 
 ## Installation & Setup
 
-1. **Start the Message Brokers:**
-   We provide a standard `docker-compose.yml` that provisions Zookeeper, Kafka, RabbitMQ, and Mosquitto.
+1. **Start the Message Brokers & Redis:**
+   We provide a standard `docker-compose.yml` that provisions Zookeeper, Kafka, RabbitMQ, Mosquitto, NanoMQ, and Redis.
    ```bash
    docker compose up -d
    ```
 
 2. **Install Python Dependencies:**
-   Install the required libraries to interface with the respective brokers.
+   Install the required libraries to interface with the respective brokers and Redis.
    ```bash
    pip install -r requirements.txt
    ```
@@ -27,17 +27,28 @@ PostOffice is a multi-protocol messaging router designed to act as a bridge betw
    export PYTHONPATH=$PYTHONPATH:$(pwd)/src
    ```
 
-## Running the Router
+## Distributed Execution (Scalable Setup)
 
-You can run the demonstration script that establishes connections to all local brokers and sets up mock subscriptions:
+PostOffice scales horizontally via a Data Plane / Control Plane split.
 
+### 1. Run Data Plane Workers
+You can run any number of worker processes. They will connect to Redis and wait for configuration payloads.
 ```bash
-python src/postoffice/main.py
+# Start a worker instance
+python src/postoffice/worker.py
 ```
 
-## Working with the Interface
+### 2. Configure via the Control Plane
+Instead of hardcoding routes, administrators use the Control Plane API to inject routing rules into the Redis cluster. The workers receive these changes in real-time.
 
-The PostOffice application exposes a single uniform interface (in `src/postoffice/app.py`). You do not need to instantiate specific broker clients manually.
+```bash
+# Run the example admin script to populate Redis with rules
+python scripts/admin.py
+```
+
+## Working with the Native Interface
+
+If you wish to embed the single-node PostOffice application directly into a script (bypassing Redis), it exposes a uniform interface (in `src/postoffice/app.py`):
 
 ```python
 from postoffice.app import PostOffice

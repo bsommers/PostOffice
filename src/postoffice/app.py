@@ -16,6 +16,7 @@ class PostOffice:
     def __init__(self):
         self.router = Router()
         self.brokers: Dict[str, Any] = {}
+        self.is_running = False
 
     def add_broker(self, name: str, protocol: str, **kwargs) -> None:
         """
@@ -32,6 +33,13 @@ class PostOffice:
         client = ClientRegistry.create_client(protocol, name, self.router, **kwargs)
         self.router.register_client(client)
         self.brokers[name] = client
+
+        # If the PostOffice has already started, immediately connect newly injected brokers
+        if self.is_running:
+            try:
+                client.connect()
+            except Exception as e:
+                logger.error(f"Failed to dynamically connect broker '{name}': {e}")
 
     def add_route(self, source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None:
         """
@@ -66,6 +74,7 @@ class PostOffice:
         """
         Starts connections for all registered brokers.
         """
+        self.is_running = True
         logger.info("Starting all PostOffice broker connections...")
         for name, broker in self.brokers.items():
             try:

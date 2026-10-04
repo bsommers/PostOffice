@@ -50,3 +50,9 @@ services:
     container_name: nanomq
     ports:
       - "1884:1883" # Bind to a different port locally to avoid conflicts
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
