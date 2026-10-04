@@ -35,33 +35,34 @@ You can run the demonstration script that establishes connections to all local b
 python src/postoffice/main.py
 ```
 
-## Adding New Routes
+## Working with the Interface
 
-The `Router` class (in `src/postoffice/router.py`) handles the forwarding of messages from one client/topic pair to another. It supports specific broker kwargs during publishing by passing them directly in `add_route`.
-
-To configure a new route, edit the routing rules in `main.py`:
+The PostOffice application exposes a single uniform interface (in `src/postoffice/app.py`). You do not need to instantiate specific broker clients manually.
 
 ```python
-# Route messages from the 'mqtt_1' client on 'home/temperature'
-# to the 'kafka_1' client on the 'telemetry' topic on partition 1.
-router.add_route(
-    source_client="mqtt_1",
-    source_topic="home/temperature",
-    target_client="kafka_1",
+from postoffice.app import PostOffice
+
+po = PostOffice()
+
+# Register any number of supported brokers
+po.add_broker("mqtt_local", "mqtt", host="localhost", port=1883)
+po.add_broker("kafka_cluster", "kafka", bootstrap_servers="localhost:9092")
+
+# Subscribe to topics
+po.subscribe("mqtt_local", "sensor/data", qos=1)
+
+# Route messages from 'mqtt_local' to the 'kafka_cluster'
+po.add_route(
+    source_broker="mqtt_local",
+    source_topic="sensor/data",
+    target_broker="kafka_cluster",
     target_topic="telemetry",
     key=b"iot_sensor",
     partition=1
 )
 
-# Route Kafka telemetry to AMQP using a fanout exchange with persistent delivery
-router.add_route(
-    source_client="kafka_1",
-    source_topic="telemetry",
-    target_client="amqp_1",
-    target_topic="",
-    exchange="events_fanout",
-    delivery_mode=2
-)
+# Start connections
+po.start()
 ```
 
 ### Supported Publish Route Parameters

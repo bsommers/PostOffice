@@ -55,9 +55,12 @@ When routing messages from one system to another, PostOffice must translate thes
 
 ## Pluggable Architecture
 
-PostOffice utilizes a `ClientRegistry` to dynamically register and load broker modules. All native clients (MQTT, AMQP, Kafka, NanoMQ) exist in the `postoffice.plugins` module.
+PostOffice strictly adheres to a multi-layer indirection pattern to keep specific protocol implementations cleanly decoupled from end-user scripts.
 
-To create your own protocol adapter, you inherit from `BaseClient` and use the `@ClientRegistry.register("your_protocol")` decorator. This decouples the core `Router` from explicit dependencies and makes adding support for things like NATS or Redis trivial.
+### Indirection Layers
+1. **[Client Facade]**: The `PostOffice` application object (`src/postoffice/app.py`) is the uniform public interface. Developers interact *only* with this facade to map routes, subscribe to topics, and orchestrate brokers.
+2. **[Uniform Interface]**: The generic `Router` and `ClientRegistry` underneath process wildcard configurations and load protocol classes safely.
+3. **[Protocol Adapters]**: Specific clients exist entirely as plugins in `src/postoffice/plugins/`. These inherit from a generic `BaseClient` and register themselves with `@ClientRegistry.register("protocol")`. They adapt the generic `publish(topic, message, **kwargs)` command to real-world operations (like determining Kafka Partitions or creating AMQP topic exchanges).
 
 ## Future Plan
 
