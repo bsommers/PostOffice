@@ -1,10 +1,12 @@
 from confluent_kafka import Consumer, Producer, KafkaError
-from .base_client import BaseClient
+from postoffice.base_client import BaseClient
+from postoffice.registry import ClientRegistry
 import logging
 import threading
 
 logger = logging.getLogger(__name__)
 
+@ClientRegistry.register("kafka")
 class KafkaClient(BaseClient):
     def __init__(self, name: str, router: any, bootstrap_servers: str = "localhost:9092"):
         super().__init__(name, router)
@@ -14,6 +16,8 @@ class KafkaClient(BaseClient):
         self.thread = None
         self._stop_event = threading.Event()
         self.subscribed_topics = []
+        self._subscribe_lock = threading.Lock()
+        self._pending_subscriptions = []
 
     def connect(self):
         try:
@@ -40,17 +44,17 @@ class KafkaClient(BaseClient):
         if self.producer:
             self.producer.flush()
 
-    def subscribe(self, topic: str):
+    def subscribe(self, topic: str, **kwargs):
         if not self.consumer:
             logger.error(f"{self.name}: Cannot subscribe to {topic}, consumer is not connected.")
             return
 
-        if topic not in self.subscribed_topics:
-            self.subscribed_topics.append(topic)
-            self.consumer.subscribe(self.subscribed_topics)
-            logger.info(f"{self.name} subscribed to {topic}")
+        with self._subscribe_lock:
+            if topic not in self.subscribed_topics and topic not in self._pending_subscriptions:
+                self._pending_subscriptions.append(topic)
+                logger.info(f"{self.name} queued subscription for {topic}")
 
-    def publish(self, topic: str, message: bytes):
+    def publish(self, topic: str, message: bytes, **kwargs):
         if not self.producer:
             logger.error(f"{self.name}: Cannot publish to {topic}, producer is not connected.")
             return
@@ -59,11 +63,29 @@ class KafkaClient(BaseClient):
             if err is not None:
                 logger.error(f"Message delivery failed: {err}")
 
-        self.producer.produce(topic, message, callback=delivery_report)
+        # Handle specific kafka publish features
+        key = kwargs.get("key", None)
+        partition = kwargs.get("partition", -1)
+
+        produce_kwargs = {"topic": topic, "value": message, "callback": delivery_report}
+
+        if key is not None:
+            produce_kwargs["key"] = key
+        if partition != -1:
+            produce_kwargs["partition"] = partition
+
+        self.producer.produce(**produce_kwargs)
         self.producer.poll(0)
 
     def _consume_loop(self):
         while not self._stop_event.is_set():
+            with self._subscribe_lock:
+                if self._pending_subscriptions:
+                    self.subscribed_topics.extend(self._pending_subscriptions)
+                    self.consumer.subscribe(self.subscribed_topics)
+                    logger.info(f"{self.name} applied subscriptions: {self._pending_subscriptions}")
+                    self._pending_subscriptions = []
+
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue
@@ -72,4 +94,10 @@ class KafkaClient(BaseClient):
                     logger.error(f"Kafka error: {msg.error()}")
                 continue
 
-            self.on_message(msg.topic(), msg.value())
+            self.on_message(
+                msg.topic(),
+                msg.value(),
+                key=msg.key(),
+                partition=msg.partition(),
+                offset=msg.offset()
+            )

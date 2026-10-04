@@ -17,15 +17,15 @@ class BaseClient(ABC):
         pass
 
     @abstractmethod
-    def subscribe(self, topic: str):
-        """Subscribe to a topic/queue/channel."""
+    def subscribe(self, topic: str, **kwargs):
+        """Subscribe to a topic/queue/channel with optional broker-specific params."""
         pass
 
     @abstractmethod
-    def publish(self, topic: str, message: bytes):
-        """Publish a message to a topic/queue/channel."""
+    def publish(self, topic: str, message: bytes, **kwargs):
+        """Publish a message to a topic/queue/channel with optional broker-specific params."""
         pass
 
-    def on_message(self, topic: str, message: bytes):
+    def on_message(self, topic: str, message: bytes, **kwargs):
         """Callback when a message is received."""
-        self.router.route(self.name, topic, message)
+        self.router.route(self.name, topic, message, **kwargs)

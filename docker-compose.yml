@@ -43,4 +43,10 @@ services:
       - "1883:1883"
       - "9001:9001"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  nanomq:
+    image: emqx/nanomq:0.18.1
+    container_name: nanomq
+    ports:
+      - "1884:1883" # Bind to a different port locally to avoid conflicts
