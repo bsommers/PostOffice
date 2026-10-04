@@ -1,23 +1,30 @@
 import pika
-from .base_client import BaseClient
+from postoffice.base_client import BaseClient
+from postoffice.registry import ClientRegistry
 import logging
 import threading
 
 logger = logging.getLogger(__name__)
 
+@ClientRegistry.register("amqp")
 class AmqpClient(BaseClient):
-    def __init__(self, name: str, router: any, host: str = "localhost"):
+    def __init__(self, name: str, router: any, host: str = "localhost", user: str = "user", password: str = "password"):
         super().__init__(name, router)
         self.host = host
+        self.user = user
+        self.password = password
         self.connection = None
         self.channel = None
         self.thread = None
         self._stop_event = threading.Event()
+        self._connected_event = threading.Event()
 
     def connect(self):
         self.thread = threading.Thread(target=self._consume_loop)
         self.thread.daemon = True
         self.thread.start()
+        # Wait briefly for the connection to establish before returning
+        self._connected_event.wait(timeout=2.0)
 
     def disconnect(self):
         self._stop_event.set()
@@ -81,13 +88,15 @@ class AmqpClient(BaseClient):
 
     def _consume_loop(self):
         try:
-            credentials = pika.PlainCredentials('user', 'password')
+            credentials = pika.PlainCredentials(self.user, self.password)
             parameters = pika.ConnectionParameters(self.host, 5672, '/', credentials)
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
             logger.info(f"{self.name} connected to AMQP broker")
+            self._connected_event.set()
         except pika.exceptions.AMQPConnectionError:
             logger.error(f"Failed to connect to AMQP broker at {self.host}:5672")
+            self._connected_event.set() # Unblock connect loop on fail
             return
 
         while not self._stop_event.is_set():

@@ -1,6 +1,6 @@
 # PostOffice User Guide
 
-PostOffice is a multi-protocol messaging router designed to act as a bridge between diverse message brokers, such as MQTT, Kafka, and RabbitMQ (AMQP).
+PostOffice is a multi-protocol messaging router designed to act as a bridge between diverse message brokers, such as MQTT, NanoMQ, Kafka, and RabbitMQ (AMQP).
 
 ## Prerequisites
 

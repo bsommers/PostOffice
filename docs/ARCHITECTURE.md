@@ -53,12 +53,17 @@ When routing messages from one system to another, PostOffice must translate thes
 * **Routing**: Kafka topic maps to MQTT topic. Kafka keys can be mapped to sub-topics (e.g., `topic/key`).
 * **Delivery**: Kafka offset commit should be tied to successful MQTT delivery (QoS 1). PostOffice consumes Kafka message, publishes to MQTT, waits for PUBACK, and *then* commits the Kafka offset.
 
+## Pluggable Architecture
+
+PostOffice utilizes a `ClientRegistry` to dynamically register and load broker modules. All native clients (MQTT, AMQP, Kafka, NanoMQ) exist in the `postoffice.plugins` module.
+
+To create your own protocol adapter, you inherit from `BaseClient` and use the `@ClientRegistry.register("your_protocol")` decorator. This decouples the core `Router` from explicit dependencies and makes adding support for things like NATS or Redis trivial.
+
 ## Future Plan
 
 1. **Robust Configuration Management**: Move routing definitions from code to a configuration file (YAML/JSON) or a dynamic configuration store (like Redis or etcd).
 2. **Schema Registry & Message Transformation**: Implement a transformation engine. Messages from IoT (JSON) might need to be converted to Avro/Protobuf for Kafka.
 3. **Dead Letter Queues (DLQ)**: Implement handling for unroutable messages or failed deliveries.
 4. **Stateful Routing (The Router)**: Enhance the `Router` class to be aware of message states (e.g., waiting for AMQP confirm before acking MQTT). Currently, it's a simple fire-and-forget.
-5. **Pluggable Architecture**: Implement dynamically loadable modules for new protocols (e.g., Redis PubSub, NATS, WebSockets).
-6. **Scalability & High Availability**: PostOffice itself needs to be stateless or use a distributed state backend to allow multiple instances to run concurrently without duplicating messages.
-7. **Observability**: Integrate Prometheus metrics (messages routed, latencies, error rates) and OpenTelemetry tracing.
+5. **Scalability & High Availability**: PostOffice itself needs to be stateless or use a distributed state backend to allow multiple instances to run concurrently without duplicating messages.
+6. **Observability**: Integrate Prometheus metrics (messages routed, latencies, error rates) and OpenTelemetry tracing.

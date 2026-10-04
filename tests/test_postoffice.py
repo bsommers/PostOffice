@@ -1,21 +1,22 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from postoffice.router import Router
-from postoffice.mqtt_client import MqttClient
-from postoffice.amqp_client import AmqpClient
-from postoffice.kafka_client import KafkaClient
+from postoffice.registry import ClientRegistry
+import postoffice.plugins # Triggers registration
 
 class TestPostOfficeScaffold(unittest.TestCase):
-    @patch('postoffice.mqtt_client.mqtt.Client')
-    @patch('postoffice.amqp_client.pika.BlockingConnection')
-    @patch('postoffice.kafka_client.Consumer')
-    @patch('postoffice.kafka_client.Producer')
+    @patch('postoffice.plugins.mqtt_client.mqtt.Client')
+    @patch('postoffice.plugins.amqp_client.pika.BlockingConnection')
+    @patch('postoffice.plugins.kafka_client.Consumer')
+    @patch('postoffice.plugins.kafka_client.Producer')
     def test_routing_initialization(self, MockProducer, MockConsumer, MockPika, MockMqtt):
         router = Router()
 
-        mqtt_client = MqttClient("mqtt_1", router)
-        amqp_client = AmqpClient("amqp_1", router)
-        kafka_client = KafkaClient("kafka_1", router)
+        # Test registry instantiation
+        mqtt_client = ClientRegistry.create_client("mqtt", "mqtt_1", router)
+        amqp_client = ClientRegistry.create_client("amqp", "amqp_1", router)
+        kafka_client = ClientRegistry.create_client("kafka", "kafka_1", router)
+        nanomq_client = ClientRegistry.create_client("nanomq", "nano_1", router)
 
         router.register_client(mqtt_client)
         router.register_client(amqp_client)

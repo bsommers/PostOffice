@@ -1,10 +1,12 @@
 from confluent_kafka import Consumer, Producer, KafkaError
-from .base_client import BaseClient
+from postoffice.base_client import BaseClient
+from postoffice.registry import ClientRegistry
 import logging
 import threading
 
 logger = logging.getLogger(__name__)
 
+@ClientRegistry.register("kafka")
 class KafkaClient(BaseClient):
     def __init__(self, name: str, router: any, bootstrap_servers: str = "localhost:9092"):
         super().__init__(name, router)

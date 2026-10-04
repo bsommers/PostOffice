@@ -1,9 +1,11 @@
 import paho.mqtt.client as mqtt
-from .base_client import BaseClient
+from postoffice.base_client import BaseClient
+from postoffice.registry import ClientRegistry
 import logging
 
 logger = logging.getLogger(__name__)
 
+@ClientRegistry.register("mqtt")
 class MqttClient(BaseClient):
     def __init__(self, name: str, router: any, host: str = "localhost", port: int = 1883):
         super().__init__(name, router)
