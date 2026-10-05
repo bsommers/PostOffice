@@ -9,14 +9,14 @@ PostOffice is a multi-protocol messaging router designed to act as a bridge betw
 
 ## Installation & Setup
 
-1. **Start the Message Brokers:**
-   We provide a standard `docker-compose.yml` that provisions Zookeeper, Kafka, RabbitMQ, and Mosquitto.
+1. **Start the Message Brokers & Redis:**
+   We provide a standard `docker-compose.yml` that provisions Zookeeper, Kafka, RabbitMQ, Mosquitto, NanoMQ, and Redis.
    ```bash
    docker compose up -d
    ```
 
 2. **Install Python Dependencies:**
-   Install the required libraries to interface with the respective brokers.
+   Install the required libraries to interface with the respective brokers and Redis.
    ```bash
    pip install -r requirements.txt
    ```
@@ -27,41 +27,53 @@ PostOffice is a multi-protocol messaging router designed to act as a bridge betw
    export PYTHONPATH=$PYTHONPATH:$(pwd)/src
    ```
 
-## Running the Router
+## Distributed Execution (Scalable Setup)
 
-You can run the demonstration script that establishes connections to all local brokers and sets up mock subscriptions:
+PostOffice scales horizontally via a Data Plane / Control Plane split.
 
+### 1. Run Data Plane Workers
+You can run any number of worker processes. They will connect to Redis and wait for configuration payloads.
 ```bash
-python src/postoffice/main.py
+# Start a worker instance
+python src/postoffice/worker.py
 ```
 
-## Adding New Routes
+### 2. Configure via the Control Plane
+Instead of hardcoding routes, administrators use the Control Plane API to inject routing rules into the Redis cluster. The workers receive these changes in real-time.
 
-The `Router` class (in `src/postoffice/router.py`) handles the forwarding of messages from one client/topic pair to another. It supports specific broker kwargs during publishing by passing them directly in `add_route`.
+```bash
+# Run the example admin script to populate Redis with rules
+python scripts/admin.py
+```
 
-To configure a new route, edit the routing rules in `main.py`:
+## Working with the Native Interface
+
+If you wish to embed the single-node PostOffice application directly into a script (bypassing Redis), it exposes a uniform interface (in `src/postoffice/app.py`):
 
 ```python
-# Route messages from the 'mqtt_1' client on 'home/temperature'
-# to the 'kafka_1' client on the 'telemetry' topic on partition 1.
-router.add_route(
-    source_client="mqtt_1",
-    source_topic="home/temperature",
-    target_client="kafka_1",
+from postoffice.app import PostOffice
+
+po = PostOffice()
+
+# Register any number of supported brokers
+po.add_broker("mqtt_local", "mqtt", host="localhost", port=1883)
+po.add_broker("kafka_cluster", "kafka", bootstrap_servers="localhost:9092")
+
+# Subscribe to topics
+po.subscribe("mqtt_local", "sensor/data", qos=1)
+
+# Route messages from 'mqtt_local' to the 'kafka_cluster'
+po.add_route(
+    source_broker="mqtt_local",
+    source_topic="sensor/data",
+    target_broker="kafka_cluster",
     target_topic="telemetry",
     key=b"iot_sensor",
     partition=1
 )
 
-# Route Kafka telemetry to AMQP using a fanout exchange with persistent delivery
-router.add_route(
-    source_client="kafka_1",
-    source_topic="telemetry",
-    target_client="amqp_1",
-    target_topic="",
-    exchange="events_fanout",
-    delivery_mode=2
-)
+# Start connections
+po.start()
 ```
 
 ### Supported Publish Route Parameters

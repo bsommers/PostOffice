@@ -55,15 +55,27 @@ When routing messages from one system to another, PostOffice must translate thes
 
 ## Pluggable Architecture
 
-PostOffice utilizes a `ClientRegistry` to dynamically register and load broker modules. All native clients (MQTT, AMQP, Kafka, NanoMQ) exist in the `postoffice.plugins` module.
+PostOffice strictly adheres to a multi-layer indirection pattern to keep specific protocol implementations cleanly decoupled from end-user scripts.
 
-To create your own protocol adapter, you inherit from `BaseClient` and use the `@ClientRegistry.register("your_protocol")` decorator. This decouples the core `Router` from explicit dependencies and makes adding support for things like NATS or Redis trivial.
+### Indirection Layers
+1. **[Client Facade]**: The `PostOffice` application object (`src/postoffice/app.py`) is the uniform public interface. Developers interact *only* with this facade to map routes, subscribe to topics, and orchestrate brokers.
+2. **[Uniform Interface]**: The generic `Router` and `ClientRegistry` underneath process wildcard configurations and load protocol classes safely.
+3. **[Protocol Adapters]**: Specific clients exist entirely as plugins in `src/postoffice/plugins/`. These inherit from a generic `BaseClient` and register themselves with `@ClientRegistry.register("protocol")`. They adapt the generic `publish(topic, message, **kwargs)` command to real-world operations (like determining Kafka Partitions or creating AMQP topic exchanges).
+
+## Horizontal Scalability (Control Plane vs Data Plane)
+
+To handle massive messaging workloads (e.g., 100,000s of connected clients terminating at the edge broker), PostOffice scales horizontally via a distributed architecture:
+
+1. **The Control Plane**: Configuration (brokers, routes, and subscriptions) is managed by `ControlPlane` and written to a centralized **Redis** datastore. It broadcasts changes via Pub/Sub.
+2. **The Data Plane**: Multiple instances of the `DataPlane` worker (`worker.py`) can run concurrently. They subscribe to the Redis cluster, downloading routing rules on startup, and dynamically applying new rules on-the-fly when alerted by the Control Plane.
+3. **Load Balancing**: To prevent multiple workers from duplicating messages, PostOffice utilizes native broker features:
+   - **MQTT 5**: Use Shared Subscriptions (e.g. `$share/group/topic`) so the broker load balances.
+   - **Kafka**: Use identical Consumer Group IDs.
+   - **AMQP**: Consume from identical Queues.
 
 ## Future Plan
 
-1. **Robust Configuration Management**: Move routing definitions from code to a configuration file (YAML/JSON) or a dynamic configuration store (like Redis or etcd).
-2. **Schema Registry & Message Transformation**: Implement a transformation engine. Messages from IoT (JSON) might need to be converted to Avro/Protobuf for Kafka.
-3. **Dead Letter Queues (DLQ)**: Implement handling for unroutable messages or failed deliveries.
-4. **Stateful Routing (The Router)**: Enhance the `Router` class to be aware of message states (e.g., waiting for AMQP confirm before acking MQTT). Currently, it's a simple fire-and-forget.
-5. **Scalability & High Availability**: PostOffice itself needs to be stateless or use a distributed state backend to allow multiple instances to run concurrently without duplicating messages.
-6. **Observability**: Integrate Prometheus metrics (messages routed, latencies, error rates) and OpenTelemetry tracing.
+1. **Schema Registry & Message Transformation**: Implement a transformation engine. Messages from IoT (JSON) might need to be converted to Avro/Protobuf for Kafka.
+2. **Dead Letter Queues (DLQ)**: Implement handling for unroutable messages or failed deliveries.
+3. **Stateful Routing**: Enhance the `Router` class to be aware of message states (e.g., waiting for AMQP confirm before acking MQTT).
+4. **Observability**: Integrate Prometheus metrics (messages routed, latencies, error rates) and OpenTelemetry tracing across the data plane.
