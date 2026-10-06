@@ -1,6 +1,7 @@
 from confluent_kafka import Consumer, Producer, KafkaError
 from postoffice.base_client import BaseClient
 from postoffice.registry import ClientRegistry
+from typing import Optional, Callable
 import logging
 import threading
 
@@ -54,14 +55,28 @@ class KafkaClient(BaseClient):
                 self._pending_subscriptions.append(topic)
                 logger.info(f"{self.name} queued subscription for {topic}")
 
-    def publish(self, topic: str, message: bytes, **kwargs):
+    def publish(
+        self,
+        topic: str,
+        message: bytes,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+        **kwargs
+    ):
         if not self.producer:
             logger.error(f"{self.name}: Cannot publish to {topic}, producer is not connected.")
+            if on_error:
+                on_error(RuntimeError(f"{self.name}: Producer is not connected."))
             return
 
         def delivery_report(err, msg):
             if err is not None:
                 logger.error(f"Message delivery failed: {err}")
+                if on_error:
+                    on_error(err)
+            else:
+                if on_confirm:
+                    on_confirm()
 
         # Handle specific kafka publish features
         key = kwargs.get("key", None)
@@ -74,8 +89,14 @@ class KafkaClient(BaseClient):
         if partition != -1:
             produce_kwargs["partition"] = partition
 
-        self.producer.produce(**produce_kwargs)
-        self.producer.poll(0)
+        try:
+            self.producer.produce(**produce_kwargs)
+            self.producer.poll(0)
+        except Exception as e:
+            logger.error(f"{self.name}: Error producing to {topic}: {e}")
+            if on_error:
+                on_error(e)
+            raise
 
     def _consume_loop(self):
         while not self._stop_event.is_set():
@@ -94,10 +115,18 @@ class KafkaClient(BaseClient):
                     logger.error(f"Kafka error: {msg.error()}")
                 continue
 
+            def _ack():
+                try:
+                    self.consumer.commit(message=msg, asynchronous=True)
+                except Exception as e:
+                    logger.error(f"Error committing offset: {e}")
+
             self.on_message(
                 msg.topic(),
                 msg.value(),
+                ack_fn=_ack,
                 key=msg.key(),
                 partition=msg.partition(),
                 offset=msg.offset()
             )
+

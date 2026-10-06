@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 from postoffice.base_client import BaseClient
 from postoffice.registry import ClientRegistry
+from typing import Optional, Callable
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class MqttClient(BaseClient):
             logger.info(f"{self.name} subscribed to {topic}")
 
     def _on_message(self, client, userdata, msg):
-        self.on_message(msg.topic, msg.payload)
+        self.on_message(msg.topic, msg.payload, qos=msg.qos)
 
     def connect(self):
         try:
@@ -47,12 +48,30 @@ class MqttClient(BaseClient):
             if self.client.is_connected():
                 self.client.subscribe(topic, qos=qos)
 
-    def publish(self, topic: str, message: bytes, **kwargs):
+    def publish(
+        self,
+        topic: str,
+        message: bytes,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+        **kwargs
+    ):
         if not self.client.is_connected():
             logger.error(f"{self.name}: Cannot publish to {topic}, client is not connected.")
+            if on_error:
+                on_error(RuntimeError(f"{self.name}: Client is not connected."))
             return
 
         qos = kwargs.get('qos', 0)
         retain = kwargs.get('retain', False)
 
-        self.client.publish(topic, message, qos=qos, retain=retain)
+        try:
+            info = self.client.publish(topic, message, qos=qos, retain=retain)
+            if on_confirm:
+                on_confirm()
+        except Exception as e:
+            logger.error(f"Error publishing MQTT message: {e}")
+            if on_error:
+                on_error(e)
+            raise
+
