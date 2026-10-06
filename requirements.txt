@@ -2,3 +2,4 @@ paho-mqtt
 pika
 confluent-kafka
 redis
+prometheus-client
