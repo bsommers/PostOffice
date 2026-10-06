@@ -92,3 +92,15 @@ class PostOffice:
                 broker.disconnect()
             except Exception as e:
                 logger.error(f"Error disconnecting broker '{name}': {e}")
+
+    def reset(self) -> None:
+        """
+        Stops and cleans up all active brokers, and clears all routes and client registrations.
+        Resets the PostOffice instance to an unconfigured state.
+        """
+        logger.info("Resetting PostOffice state...")
+        self.stop()
+        self.brokers.clear()
+        self.router.routes.clear()
+        self.router.clients.clear()
+        self.is_running = False
