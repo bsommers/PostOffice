@@ -23,11 +23,12 @@ This roadmap defines the engineering milestones to advance PostOffice from its i
   1. Unit tests cover `ControlPlane` and `DataPlane` using a mock Redis interface without requiring live network services.
   2. DataPlane worker recovers gracefully if Redis connection is lost and restored.
   3. `ControlPlane.clear_state()` cleanly resets internal PostOffice routes and brokers without requiring process restart.
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 - [x] 01-01: Implement ControlPlane unit tests with mock Redis and PostOffice reset() seam.
 - [x] 01-02: Add Redis reconnection backoff and clear_state reset handler to DataPlane with unit tests.
+- [x] 01-03: Research Spike - Multi-Language Rewrite Evaluation (Zig, Rust, Go, C, C++ vs Python).
 
 ### Phase 2: Semantic Translation & Delivery Guarantees
 **Goal**: Coordinate end-to-end acknowledgement semantics across protocols so that ingress messages are only acknowledged after egress broker confirmation.
