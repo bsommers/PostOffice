@@ -26,8 +26,8 @@ This roadmap defines the engineering milestones to advance PostOffice from its i
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Implement `ControlPlane` and `DataPlane` unit tests with mock Redis.
-- [ ] 01-02: Add Redis reconnection backoff and `clear_state` reset handler to `DataPlane`.
+- [ ] 01-01: Implement ControlPlane unit tests with mock Redis and PostOffice reset() seam.
+- [ ] 01-02: Add Redis reconnection backoff and clear_state reset handler to DataPlane with unit tests.
 
 ### Phase 2: Semantic Translation & Delivery Guarantees
 **Goal**: Coordinate end-to-end acknowledgement semantics across protocols so that ingress messages are only acknowledged after egress broker confirmation.
