@@ -20,8 +20,8 @@
 ## v1.1 Active Requirements
 
 ### Semantic Translation & Guarantees
-- [ ] **SEM-01**: Coordinate QoS 1/2 acknowledgements between ingress and egress protocols (e.g. wait for Kafka delivery callback or AMQP ack before sending MQTT PUBACK)
-- [ ] **SEM-02**: Map MQTT QoS levels to AMQP `delivery_mode` (1=transient, 2=persistent) and Kafka `acks` configurations automatically
+- [x] **SEM-01**: Coordinate QoS 1/2 acknowledgements between ingress and egress protocols (e.g. wait for Kafka delivery callback or AMQP ack before sending MQTT PUBACK)
+- [x] **SEM-02**: Map MQTT QoS levels to AMQP `delivery_mode` (1=transient, 2=persistent) and Kafka `acks` configurations automatically
 
 ### Routing Engine Optimization
 - [ ] **ROUT-01**: Radix / Prefix Trie matching algorithm in `Router` to eliminate O(N) route scan overhead
@@ -55,8 +55,8 @@
 | TEST-01 | Phase 1 | Complete |
 | TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 1 | Complete |
-| SEM-01 | Phase 2 | Pending |
-| SEM-02 | Phase 2 | Pending |
+| SEM-01 | Phase 2 | Complete |
+| SEM-02 | Phase 2 | Complete |
 | ROUT-01 | Phase 3 | Pending |
 | OBS-01 | Phase 4 | Pending |
 | DLQ-01 | Phase 4 | Pending |

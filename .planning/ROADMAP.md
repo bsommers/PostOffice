@@ -39,8 +39,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Design and implement asynchronous ACK/delivery callback seam in `BaseClient` and `Router`.
-- [ ] 02-02: Wire publisher confirms and offset commit coordination across MQTT, AMQP, and Kafka plugins.
+- [x] 02-01: Design and implement asynchronous ACK/delivery callback seam in `BaseClient` and `Router`.
+- [x] 02-02: Wire publisher confirms and offset commit coordination across MQTT, AMQP, and Kafka plugins.
 
 ### Phase 3: Route Engine Trie Optimization
 **Goal**: Replace the linear O(N) route scan with a hierarchical topic Radix/Trie matching engine.
