@@ -22,8 +22,8 @@ See: `.planning/PROJECT.md` (updated 2026-10-05)
 
 Phase: 4 of 4 (Observability & Dead Letter Queues)
 Plan: 0 of 2 in current phase
-Status: Ready to discuss / plan Phase 4
-Last activity: 2026-10-06 — Phase 3 completed & verified (03-VERIFICATION.md)
+Status: Ready to plan
+Last activity: 2026-10-06 — Phase 4 context gathered (04-CONTEXT.md)
 
 Progress: [███████░░░] 75%
 
