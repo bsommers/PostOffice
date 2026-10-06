@@ -24,7 +24,7 @@
 - [x] **SEM-02**: Map MQTT QoS levels to AMQP `delivery_mode` (1=transient, 2=persistent) and Kafka `acks` configurations automatically
 
 ### Routing Engine Optimization
-- [ ] **ROUT-01**: Radix / Prefix Trie matching algorithm in `Router` to eliminate O(N) route scan overhead
+- [x] **ROUT-01**: Radix / Prefix Trie matching algorithm in `Router` to eliminate O(N) route scan overhead
 
 ### Testing & Reliability
 - [x] **TEST-01**: Unit tests for `ControlPlane` and `DataPlane` with mock Redis (`fakeredis` or mock objects)
@@ -57,7 +57,7 @@
 | TEST-03 | Phase 1 | Complete |
 | SEM-01 | Phase 2 | Complete |
 | SEM-02 | Phase 2 | Complete |
-| ROUT-01 | Phase 3 | Pending |
+| ROUT-01 | Phase 3 | Complete |
 | OBS-01 | Phase 4 | Pending |
 | DLQ-01 | Phase 4 | Pending |
 

@@ -67,18 +67,22 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
     return translated
 
 
+from postoffice.trie import TopicTrie
+
 class Router:
     def __init__(self):
-        # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters
+        # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters (kept for inspection)
         self.routes: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
         self.clients: Dict[str, Any] = {}
+        # Per-client hierarchical TopicTrie for O(k) matching
+        self.client_tries: Dict[str, TopicTrie] = {}
 
     def register_client(self, client: Any):
         self.clients[client.name] = client
         logger.info(f"Registered client: {client.name}")
 
     def _topic_match(self, route_topic: str, message_topic: str) -> bool:
-        """Helper to match MQTT style wildcards (+ for single level, # for multi-level)."""
+        """Helper to match MQTT style wildcards (+ for single level, # for multi-level). Kept for backward compatibility."""
         if route_topic == message_topic:
             return True
 
@@ -106,6 +110,11 @@ class Router:
             **target_kwargs
         }
         self.routes[key].append(route_config)
+
+        if source_client not in self.client_tries:
+            self.client_tries[source_client] = TopicTrie()
+        self.client_tries[source_client].insert(source_topic, route_config)
+
         logger.info(f"Added route: {source_client}/{source_topic} -> {target_client}/{target_topic} with kwargs {target_kwargs}")
 
     def route(
@@ -125,17 +134,16 @@ class Router:
 
         logger.info(f"Received message from {source_client} on {source_topic}: {message}")
 
-        # Find all matching routes, processing wildcards
-        matching_routes = []
-        for (r_client, r_topic), routes in self.routes.items():
-            if r_client == source_client and self._topic_match(r_topic, source_topic):
-                matching_routes.extend(routes)
+        # Find all matching routes in O(k) time via TopicTrie
+        client_trie = self.client_tries.get(source_client)
+        matching_routes = client_trie.match(source_topic) if client_trie else []
 
         if not matching_routes:
             logger.debug(f"No routes found for {source_client}/{source_topic}")
             if ack_fn:
                 ack_fn()
             return
+
 
         has_callbacks = ack_fn is not None or nack_fn is not None
         coordinator = _FanoutCoordinator(len(matching_routes), ack_fn=ack_fn, nack_fn=nack_fn) if has_callbacks else None
