@@ -27,9 +27,9 @@
 - [ ] **ROUT-01**: Radix / Prefix Trie matching algorithm in `Router` to eliminate O(N) route scan overhead
 
 ### Testing & Reliability
-- [ ] **TEST-01**: Unit tests for `ControlPlane` and `DataPlane` with mock Redis (`fakeredis` or mock objects)
-- [ ] **TEST-02**: Reconnection resiliency in `DataPlane` if Redis drops connection
-- [ ] **TEST-03**: Clean state reset handling in `DataPlane` when `clear_state` is broadcast
+- [x] **TEST-01**: Unit tests for `ControlPlane` and `DataPlane` with mock Redis (`fakeredis` or mock objects)
+- [x] **TEST-02**: Reconnection resiliency in `DataPlane` if Redis drops connection
+- [x] **TEST-03**: Clean state reset handling in `DataPlane` when `clear_state` is broadcast
 
 ### Observability & Error Handling
 - [ ] **OBS-01**: Metrics instrumentation (counters for messages routed, errors, latency)
@@ -52,9 +52,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
-| TEST-03 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
+| TEST-03 | Phase 1 | Complete |
 | SEM-01 | Phase 2 | Pending |
 | SEM-02 | Phase 2 | Pending |
 | ROUT-01 | Phase 3 | Pending |

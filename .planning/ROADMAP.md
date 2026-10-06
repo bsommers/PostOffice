@@ -6,7 +6,7 @@ This roadmap defines the engineering milestones to advance PostOffice from its i
 
 ## Phases
 
-- [ ] **Phase 1: Test Suite & Distributed Plane Hardening** - Add mock Redis unit tests, implement reconnect resiliency in DataPlane, and handle clean state resets.
+- [x] **Phase 1: Test Suite & Distributed Plane Hardening** - Add mock Redis unit tests, implement reconnect resiliency in DataPlane, and handle clean state resets.
 - [ ] **Phase 2: Semantic Translation & Delivery Guarantees** - Implement bidirectional acknowledgement propagation between MQTT QoS, AMQP confirms, and Kafka offsets.
 - [ ] **Phase 3: Route Engine Trie Optimization** - Upgrade topic matching to a Radix/Trie structure for sub-millisecond routing at scale.
 - [ ] **Phase 4: Observability & Dead Letter Queues** - Add OpenTelemetry/Prometheus metrics and dead-letter queue routing for failed deliveries.
@@ -26,8 +26,8 @@ This roadmap defines the engineering milestones to advance PostOffice from its i
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Implement ControlPlane unit tests with mock Redis and PostOffice reset() seam.
-- [ ] 01-02: Add Redis reconnection backoff and clear_state reset handler to DataPlane with unit tests.
+- [x] 01-01: Implement ControlPlane unit tests with mock Redis and PostOffice reset() seam.
+- [x] 01-02: Add Redis reconnection backoff and clear_state reset handler to DataPlane with unit tests.
 
 ### Phase 2: Semantic Translation & Delivery Guarantees
 **Goal**: Coordinate end-to-end acknowledgement semantics across protocols so that ingress messages are only acknowledged after egress broker confirmation.
