@@ -68,14 +68,18 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
 
 
 from postoffice.trie import TopicTrie
+from postoffice.metrics import MetricsManager
+import time
 
 class Router:
-    def __init__(self):
+    def __init__(self, metrics_manager: Optional[MetricsManager] = None):
         # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters (kept for inspection)
         self.routes: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
         self.clients: Dict[str, Any] = {}
         # Per-client hierarchical TopicTrie for O(k) matching
         self.client_tries: Dict[str, TopicTrie] = {}
+        # Metrics instrumentation
+        self.metrics = metrics_manager or MetricsManager()
 
     def register_client(self, client: Any):
         self.clients[client.name] = client
@@ -126,6 +130,8 @@ class Router:
         nack_fn: Optional[Callable[..., None]] = None,
         **source_kwargs
     ):
+        start_time = time.perf_counter()
+
         # Allow ack_fn and nack_fn to be passed via kwargs if needed
         if ack_fn is None and "ack_fn" in source_kwargs:
             ack_fn = source_kwargs.pop("ack_fn")
@@ -140,10 +146,11 @@ class Router:
 
         if not matching_routes:
             logger.debug(f"No routes found for {source_client}/{source_topic}")
+            self.metrics.record_error(source_client, "unroutable")
+            self.metrics.record_duration(source_client, time.perf_counter() - start_time)
             if ack_fn:
                 ack_fn()
             return
-
 
         has_callbacks = ack_fn is not None or nack_fn is not None
         coordinator = _FanoutCoordinator(len(matching_routes), ack_fn=ack_fn, nack_fn=nack_fn) if has_callbacks else None
@@ -164,12 +171,19 @@ class Router:
                 logger.info(f"Routing to {target_client} on {target_topic} args: {publish_kwargs}")
                 try:
                     self.clients[target_client].publish(target_topic, message, **publish_kwargs)
+                    self.metrics.record_routed(source_client, target_client, status="success")
                 except Exception as e:
                     logger.error(f"Error publishing to {target_client}: {e}")
+                    self.metrics.record_routed(source_client, target_client, status="error")
+                    self.metrics.record_error(source_client, "publish_failure")
                     if coordinator:
                         coordinator.on_error(e)
             else:
                 logger.warning(f"Target client {target_client} not registered")
+                self.metrics.record_error(source_client, "unregistered_target")
                 if coordinator:
                     coordinator.on_error(RuntimeError(f"Target client {target_client} not registered"))
+
+        self.metrics.record_duration(source_client, time.perf_counter() - start_time)
+
 

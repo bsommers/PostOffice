@@ -13,10 +13,17 @@ class PostOffice:
     Uniform Interface Layer (Facade) for configuring and starting the multi-protocol router.
     Clients interact strictly with this class and do not need to know about specific broker implementations.
     """
-    def __init__(self):
+    def __init__(self, metrics_port: Optional[int] = None):
         self.router = Router()
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
+        self.metrics_port = metrics_port
+        self.metrics_manager = self.router.metrics
+
+    def set_metrics_port(self, port: Optional[int]) -> None:
+        """Sets or updates the HTTP port used to expose Prometheus metrics."""
+        self.metrics_port = port
+
 
     def add_broker(self, name: str, protocol: str, **kwargs) -> None:
         """
@@ -72,9 +79,12 @@ class PostOffice:
 
     def start(self) -> None:
         """
-        Starts connections for all registered brokers.
+        Starts connections for all registered brokers and metrics HTTP server if configured.
         """
         self.is_running = True
+        if self.metrics_port is not None:
+            self.router.metrics.start_server(self.metrics_port)
+
         logger.info("Starting all PostOffice broker connections...")
         for name, broker in self.brokers.items():
             try:
@@ -84,9 +94,10 @@ class PostOffice:
 
     def stop(self) -> None:
         """
-        Stops and cleans up connections for all registered brokers.
+        Stops and cleans up connections for all registered brokers and metrics server.
         """
         logger.info("Stopping all PostOffice broker connections...")
+        self.router.metrics.stop_server()
         for name, broker in self.brokers.items():
             try:
                 broker.disconnect()
@@ -101,6 +112,7 @@ class PostOffice:
         logger.info("Resetting PostOffice state...")
         self.stop()
         self.brokers.clear()
-        self.router.routes.clear()
-        self.router.clients.clear()
+        self.router = Router()
+        self.metrics_manager = self.router.metrics
         self.is_running = False
+
