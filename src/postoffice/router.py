@@ -1,8 +1,11 @@
 import logging
 import threading
-from typing import Dict, List, Any, Optional, Callable
+import time
+from typing import Dict, Any, List, Optional, Callable
+from postoffice.trie import TopicTrie
+from postoffice.metrics import MetricsManager
+from postoffice.dlq import format_dlq_payload
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class _FanoutCoordinator:
@@ -11,11 +14,13 @@ class _FanoutCoordinator:
         self,
         expected_count: int,
         ack_fn: Optional[Callable[[], None]] = None,
-        nack_fn: Optional[Callable[..., None]] = None
+        nack_fn: Optional[Callable[..., None]] = None,
+        dlq_fn: Optional[Callable[[Optional[Exception]], bool]] = None
     ):
         self.remaining = expected_count
         self.ack_fn = ack_fn
         self.nack_fn = nack_fn
+        self.dlq_fn = dlq_fn
         self.lock = threading.Lock()
         self.failed = False
 
@@ -34,6 +39,13 @@ class _FanoutCoordinator:
         with self.lock:
             if not self.failed:
                 self.failed = True
+                if self.dlq_fn:
+                    try:
+                        handled = self.dlq_fn(exc)
+                        if handled:
+                            return
+                    except Exception as e:
+                        logger.error(f"Error executing DLQ fallback: {e}")
                 if self.nack_fn:
                     try:
                         self.nack_fn(requeue=True)
@@ -67,10 +79,6 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
     return translated
 
 
-from postoffice.trie import TopicTrie
-from postoffice.metrics import MetricsManager
-import time
-
 class Router:
     def __init__(self, metrics_manager: Optional[MetricsManager] = None):
         # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters (kept for inspection)
@@ -80,6 +88,65 @@ class Router:
         self.client_tries: Dict[str, TopicTrie] = {}
         # Metrics instrumentation
         self.metrics = metrics_manager or MetricsManager()
+        # Global default Dead Letter Queue target
+        self.default_dlq_broker: Optional[str] = None
+        self.default_dlq_topic: Optional[str] = None
+
+    def set_dlq(self, broker_name: str, topic: str) -> None:
+        """Sets the global default Dead Letter Queue destination broker and topic."""
+        self.default_dlq_broker = broker_name
+        self.default_dlq_topic = topic
+        logger.info(f"Configured default DLQ target: {broker_name}/{topic}")
+
+    def _route_to_dlq(
+        self,
+        source_broker: str,
+        source_topic: str,
+        payload: bytes,
+        error: str,
+        dlq_broker: Optional[str] = None,
+        dlq_topic: Optional[str] = None,
+        ack_fn: Optional[Callable[[], None]] = None,
+        nack_fn: Optional[Callable[..., None]] = None
+    ) -> bool:
+        """
+        Dispatches a failed or unroutable message to the configured DLQ.
+        Returns True if safely published to DLQ and acknowledged, False otherwise.
+        """
+        target_broker = dlq_broker or self.default_dlq_broker
+        target_topic = dlq_topic or self.default_dlq_topic
+
+        if not target_broker or not target_topic:
+            return False
+
+        # Anti-recursion protection: do not forward DLQ message to itself
+        if source_broker == target_broker and source_topic == target_topic:
+            logger.critical(f"DLQ recursion detected: message originated from DLQ {source_broker}/{source_topic}. Dropping.")
+            self.metrics.record_error(source_broker, "dlq_recursion")
+            if nack_fn:
+                try:
+                    nack_fn(requeue=False)
+                except TypeError:
+                    nack_fn()
+            return True
+
+        try:
+            dlq_bytes = format_dlq_payload(payload, source_broker, source_topic, error)
+            if target_broker in self.clients:
+                self.clients[target_broker].publish(target_topic, dlq_bytes)
+                self.metrics.record_dlq(source_broker, target_broker, target_topic)
+                logger.info(f"Dispatched failed/unroutable message from {source_broker}/{source_topic} to DLQ {target_broker}/{target_topic}")
+                if ack_fn:
+                    ack_fn()
+                return True
+            else:
+                logger.error(f"DLQ broker '{target_broker}' not registered")
+                self.metrics.record_error(source_broker, "dlq_broker_unregistered")
+                return False
+        except Exception as e:
+            logger.error(f"Error publishing to DLQ {target_broker}/{target_topic}: {e}")
+            self.metrics.record_error(source_broker, "dlq_publish_failure")
+            return False
 
     def register_client(self, client: Any):
         self.clients[client.name] = client
@@ -148,19 +215,59 @@ class Router:
             logger.debug(f"No routes found for {source_client}/{source_topic}")
             self.metrics.record_error(source_client, "unroutable")
             self.metrics.record_duration(source_client, time.perf_counter() - start_time)
-            if ack_fn:
-                ack_fn()
+
+            dlq_configured = bool(self.default_dlq_broker and self.default_dlq_topic)
+            dlq_handled = self._route_to_dlq(
+                source_client,
+                source_topic,
+                message,
+                error="Unroutable message: no matching routes",
+                ack_fn=ack_fn,
+                nack_fn=nack_fn
+            )
+            if not dlq_handled:
+                if dlq_configured and nack_fn:
+                    try:
+                        nack_fn(requeue=True)
+                    except TypeError:
+                        nack_fn()
+                elif ack_fn:
+                    ack_fn()
             return
 
+        def _handle_dlq_on_error(exc: Optional[Exception]) -> bool:
+            err_msg = str(exc) if exc else "Publish failed"
+            # Use per-route DLQ if configured on the route, else fallback to global DLQ
+            route_dlq_broker = matching_routes[0].get("dlq_broker") if matching_routes else None
+            route_dlq_topic = matching_routes[0].get("dlq_topic") if matching_routes else None
+            return self._route_to_dlq(
+                source_client,
+                source_topic,
+                message,
+                error=err_msg,
+                dlq_broker=route_dlq_broker,
+                dlq_topic=route_dlq_topic,
+                ack_fn=ack_fn,
+                nack_fn=nack_fn
+            )
+
         has_callbacks = ack_fn is not None or nack_fn is not None
-        coordinator = _FanoutCoordinator(len(matching_routes), ack_fn=ack_fn, nack_fn=nack_fn) if has_callbacks else None
+        coordinator = _FanoutCoordinator(
+            len(matching_routes),
+            ack_fn=ack_fn,
+            nack_fn=nack_fn,
+            dlq_fn=_handle_dlq_on_error
+        ) if has_callbacks else None
 
         for route_config in matching_routes:
             target_client = route_config["target_client"]
             target_topic = route_config["target_topic"]
 
-            # Exclude internal routing metadata to just pass **kwargs to publish
-            raw_kwargs = {k: v for k, v in route_config.items() if k not in ("target_client", "target_topic")}
+            # Exclude internal routing and DLQ metadata to pass **kwargs to publish
+            raw_kwargs = {
+                k: v for k, v in route_config.items()
+                if k not in ("target_client", "target_topic", "dlq_broker", "dlq_topic")
+            }
             publish_kwargs = _translate_semantics(source_kwargs, raw_kwargs)
 
             if coordinator:
@@ -178,12 +285,32 @@ class Router:
                     self.metrics.record_error(source_client, "publish_failure")
                     if coordinator:
                         coordinator.on_error(e)
+                    else:
+                        self._route_to_dlq(
+                            source_client,
+                            source_topic,
+                            message,
+                            error=str(e),
+                            dlq_broker=route_config.get("dlq_broker"),
+                            dlq_topic=route_config.get("dlq_topic")
+                        )
             else:
                 logger.warning(f"Target client {target_client} not registered")
                 self.metrics.record_error(source_client, "unregistered_target")
+                exc = RuntimeError(f"Target client {target_client} not registered")
                 if coordinator:
-                    coordinator.on_error(RuntimeError(f"Target client {target_client} not registered"))
+                    coordinator.on_error(exc)
+                else:
+                    self._route_to_dlq(
+                        source_client,
+                        source_topic,
+                        message,
+                        error=str(exc),
+                        dlq_broker=route_config.get("dlq_broker"),
+                        dlq_topic=route_config.get("dlq_topic")
+                    )
 
         self.metrics.record_duration(source_client, time.perf_counter() - start_time)
+
 
 

@@ -13,12 +13,27 @@ class PostOffice:
     Uniform Interface Layer (Facade) for configuring and starting the multi-protocol router.
     Clients interact strictly with this class and do not need to know about specific broker implementations.
     """
-    def __init__(self, metrics_port: Optional[int] = None):
+    def __init__(
+        self,
+        metrics_port: Optional[int] = None,
+        dlq_broker: Optional[str] = None,
+        dlq_topic: Optional[str] = None
+    ):
         self.router = Router()
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
         self.metrics_manager = self.router.metrics
+        self.dlq_broker = dlq_broker
+        self.dlq_topic = dlq_topic
+        if dlq_broker and dlq_topic:
+            self.router.set_dlq(dlq_broker, dlq_topic)
+
+    def set_dlq(self, broker_name: str, topic: str) -> None:
+        """Sets the global default Dead Letter Queue destination broker and topic."""
+        self.dlq_broker = broker_name
+        self.dlq_topic = topic
+        self.router.set_dlq(broker_name, topic)
 
     def set_metrics_port(self, port: Optional[int]) -> None:
         """Sets or updates the HTTP port used to expose Prometheus metrics."""
@@ -113,6 +128,8 @@ class PostOffice:
         self.stop()
         self.brokers.clear()
         self.router = Router()
+        if self.dlq_broker and self.dlq_topic:
+            self.router.set_dlq(self.dlq_broker, self.dlq_topic)
         self.metrics_manager = self.router.metrics
         self.is_running = False
 
