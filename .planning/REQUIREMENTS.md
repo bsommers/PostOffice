@@ -32,8 +32,8 @@
 - [x] **TEST-03**: Clean state reset handling in `DataPlane` when `clear_state` is broadcast
 
 ### Observability & Error Handling
-- [ ] **OBS-01**: Metrics instrumentation (counters for messages routed, errors, latency)
-- [ ] **DLQ-01**: Dead Letter Queue (DLQ) support for unroutable or failed messages
+- [x] **OBS-01**: Metrics instrumentation (counters for messages routed, errors, latency)
+- [x] **DLQ-01**: Dead Letter Queue (DLQ) support for unroutable or failed messages
 
 ## v2 Requirements
 
@@ -58,8 +58,8 @@
 | SEM-01 | Phase 2 | Complete |
 | SEM-02 | Phase 2 | Complete |
 | ROUT-01 | Phase 3 | Complete |
-| OBS-01 | Phase 4 | Pending |
-| DLQ-01 | Phase 4 | Pending |
+| OBS-01 | Phase 4 | Complete |
+| DLQ-01 | Phase 4 | Complete |
 
 ---
 *Requirements status: 2026-10-05*

@@ -7,9 +7,9 @@ This roadmap defines the engineering milestones to advance PostOffice from its i
 ## Phases
 
 - [x] **Phase 1: Test Suite & Distributed Plane Hardening** - Add mock Redis unit tests, implement reconnect resiliency in DataPlane, and handle clean state resets.
-- [ ] **Phase 2: Semantic Translation & Delivery Guarantees** - Implement bidirectional acknowledgement propagation between MQTT QoS, AMQP confirms, and Kafka offsets.
-- [ ] **Phase 3: Route Engine Trie Optimization** - Upgrade topic matching to a Radix/Trie structure for sub-millisecond routing at scale.
-- [ ] **Phase 4: Observability & Dead Letter Queues** - Add OpenTelemetry/Prometheus metrics and dead-letter queue routing for failed deliveries.
+- [x] **Phase 2: Semantic Translation & Delivery Guarantees** - Implement bidirectional acknowledgement propagation between MQTT QoS, AMQP confirms, and Kafka offsets.
+- [x] **Phase 3: Route Engine Trie Optimization** - Upgrade topic matching to a Radix/Trie structure for sub-millisecond routing at scale.
+- [x] **Phase 4: Observability & Dead Letter Queues** - Add OpenTelemetry/Prometheus metrics and dead-letter queue routing for failed deliveries.
 
 ---
 
@@ -65,8 +65,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Instrument `PostOffice` and `Router` with OpenTelemetry and Prometheus metric collectors.
-- [ ] 04-02: Implement configurable Dead Letter Queue (DLQ) routing for unhandled or rejected payloads.
+- [x] 04-01: Instrument `PostOffice` and `Router` with OpenTelemetry and Prometheus metric collectors.
+- [x] 04-02: Implement configurable Dead Letter Queue (DLQ) routing for unhandled or rejected payloads.
 
 ---
 *Roadmap created: 2026-10-05*
