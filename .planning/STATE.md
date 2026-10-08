@@ -1,17 +1,15 @@
 ---
 gsd_state_version: '1.0'
-status: complete
+status: ready_to_execute
 progress:
-  total_phases: 4
+  total_phases: 6
   completed_phases: 4
-  total_plans: 8
+  total_plans: 10
   completed_plans: 8
-  percent: 100
+  percent: 80
 milestone:
-  name: v1.1 Hardened Mesh & Delivery Guarantees
-  shipped: 2026-10-07
-  tag: v1.1.0
-  audit: .planning/v1.1-MILESTONE-AUDIT.md
+  name: v2.0 Schema Transformation & Production Security
+  active_phase: 05-dynamic-schema-registry-serialization
 ---
 
 # Project State
@@ -21,15 +19,16 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-07)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Milestone v1.1 shipped. Ready for v2.0 (Dynamic Schema Registry & Production Security).
+**Current focus:** Phase 5: Dynamic Schema Registry & Serialization (JSON, Apache Avro, Protocol Buffers)
 
 ## Current Position
 
-Phase: All 4 phases complete (v1.1 shipped)
-Status: Complete (All 4 phases verified, 43 unit tests passing)
-Last activity: 2026-10-07 — Milestone v1.1 archived and tagged
+Phase: 5 of 6 (Dynamic Schema Registry & Serialization)
+Plan: 0 of 2 in current phase (05-01, 05-02 planned)
+Status: Ready to execute Wave 1 (Plan 05-01)
+Last activity: 2026-10-08 — Phase 5 plans created (05-01-PLAN.md, 05-02-PLAN.md)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -46,15 +45,20 @@ Progress: [██████████] 100%
 | Phase 2: Semantic Translation & Delivery Guarantees | 2/2 | 0.5h | 15m |
 | Phase 3: Route Engine Trie Optimization | 1/1 | 0.25h | 15m |
 | Phase 4: Observability & Dead Letter Queues | 2/2 | 0.5h | 15m |
+| Phase 5: Dynamic Schema Registry & Serialization | 0/2 | - | - |
+| Phase 6: Production Security, TLS/mTLS & Auth | 0/2 | - | - |
 
 **Recent Trend:**
-- Trend: Milestone v1.1 completed and audited; 43/43 unit tests passing in 0.5s.
+- Trend: Phase 5 planned with hybrid schema registry (In-Memory & Redis) and dual Avro/Protobuf format converters.
 
 ## Accumulated Context
 
 ### Decisions
 
 - **Architecture:** Maintain strict three-tier indirection (`PostOffice` facade -> `Router` / `ClientRegistry` -> `BaseClient` plugins).
+- **Schema Management:** Pluggable `BaseSchemaRegistry` supporting `InMemorySchemaRegistry` and `RedisSchemaRegistry`.
+- **Serialization:** Dual support for Apache Avro (`fastavro`) and Protocol Buffers (`protobuf`) with bidirectional JSON conversion and Confluent 5-byte wire format support.
+- **Error Containment:** Schema transform and validation errors route to DLQ with upstream ACK and increment `schema_validation_error` metric.
 - **Topic Matching:** $O(k)$ `TopicTrie` hierarchical prefix matching replaces linear scans for high-scale topic routing.
 - **Delivery Semantics:** `_FanoutCoordinator` atomic latch coordinates multi-target publisher confirms before acknowledging upstream ingress.
 - **Dead Letter Queue:** Structured JSON envelopes with base64 binary encoding fallback and anti-recursion protection (`requeue=False`).
@@ -67,4 +71,4 @@ Progress: [██████████] 100%
 - Zero data loss guarantees when translating between at-least-once systems
 
 ---
-*Last updated: 2026-10-07 after v1.1 milestone release*
+*Last updated: 2026-10-08 after Phase 5 planning*

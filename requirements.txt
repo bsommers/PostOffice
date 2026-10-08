@@ -3,3 +3,5 @@ pika
 confluent-kafka
 redis
 prometheus-client
+fastavro
+protobuf
