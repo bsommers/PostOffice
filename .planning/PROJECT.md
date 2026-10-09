@@ -24,10 +24,10 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **ROUT-01**: High-throughput $O(k)$ TopicTrie matching engine replacing linear route scans (648.9x faster at 10,000 routes) — v1.1
 - [x] **OBS-01**: Observability and metrics instrumentation (`MetricsManager`, Prometheus counters/histogram, HTTP exporter) — v1.1
 - [x] **DLQ-01**: Dead Letter Queue (DLQ) support for unroutable or failed messages with JSON envelope and anti-recursion protection — v1.1
+- [x] **SCH-01**: Dynamic payload schema conversion and schema registry integration (`BaseSchemaRegistry`, JSON ↔ Avro ↔ Protobuf, Confluent wire format) — v2.0
 
 ### Active (v2.0 Roadmap)
 
-- [ ] **SCH-01**: Dynamic payload schema conversion and schema registry integration (JSON to Avro/Protobuf)
 - [ ] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections
 
 ### Out of Scope
