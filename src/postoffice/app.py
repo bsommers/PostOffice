@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional
 from postoffice.router import Router
 from postoffice.registry import ClientRegistry
+from postoffice.schema import BaseSchemaRegistry, SchemaEntry
 
 # Import plugins to trigger registration
 import postoffice.plugins
@@ -17,17 +18,31 @@ class PostOffice:
         self,
         metrics_port: Optional[int] = None,
         dlq_broker: Optional[str] = None,
-        dlq_topic: Optional[str] = None
+        dlq_topic: Optional[str] = None,
+        schema_registry: Optional[BaseSchemaRegistry] = None
     ):
-        self.router = Router()
+        self.router = Router(schema_registry=schema_registry)
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
         self.metrics_manager = self.router.metrics
+        self.schema_registry = self.router.schema_registry
         self.dlq_broker = dlq_broker
         self.dlq_topic = dlq_topic
         if dlq_broker and dlq_topic:
             self.router.set_dlq(dlq_broker, dlq_topic)
+
+    def register_schema(self, name: str, definition: Any, schema_type: str = "AVRO") -> int:
+        """Registers a schema into the PostOffice schema registry."""
+        return self.schema_registry.register_schema(name, definition, schema_type)
+
+    def get_schema(self, name: str) -> Optional[SchemaEntry]:
+        """Retrieves a schema entry by name."""
+        return self.schema_registry.get_schema(name)
+
+    def get_schema_by_id(self, schema_id: int) -> Optional[SchemaEntry]:
+        """Retrieves a schema entry by numeric ID."""
+        return self.schema_registry.get_schema_by_id(schema_id)
 
     def set_dlq(self, broker_name: str, topic: str) -> None:
         """Sets the global default Dead Letter Queue destination broker and topic."""
@@ -127,7 +142,7 @@ class PostOffice:
         logger.info("Resetting PostOffice state...")
         self.stop()
         self.brokers.clear()
-        self.router = Router()
+        self.router = Router(schema_registry=self.schema_registry)
         if self.dlq_broker and self.dlq_topic:
             self.router.set_dlq(self.dlq_broker, self.dlq_topic)
         self.metrics_manager = self.router.metrics

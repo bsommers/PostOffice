@@ -9,6 +9,7 @@ from postoffice.schema.registry import (
 )
 from postoffice.schema.converters import (
     SchemaConverter,
+    SchemaValidationError,
     encode_wire_format,
     decode_wire_format,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "InMemorySchemaRegistry",
     "RedisSchemaRegistry",
     "SchemaConverter",
+    "SchemaValidationError",
     "encode_wire_format",
     "decode_wire_format",
 ]

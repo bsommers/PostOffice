@@ -5,6 +5,12 @@ from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import format_dlq_payload
+from postoffice.schema import (
+    BaseSchemaRegistry,
+    InMemorySchemaRegistry,
+    SchemaConverter,
+    SchemaValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +86,11 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
 
 
 class Router:
-    def __init__(self, metrics_manager: Optional[MetricsManager] = None):
+    def __init__(
+        self,
+        metrics_manager: Optional[MetricsManager] = None,
+        schema_registry: Optional[BaseSchemaRegistry] = None
+    ):
         # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters (kept for inspection)
         self.routes: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
         self.clients: Dict[str, Any] = {}
@@ -88,6 +98,9 @@ class Router:
         self.client_tries: Dict[str, TopicTrie] = {}
         # Metrics instrumentation
         self.metrics = metrics_manager or MetricsManager()
+        # Schema registry and conversion engine
+        self.schema_registry = schema_registry or InMemorySchemaRegistry()
+        self.converter = SchemaConverter(self.schema_registry)
         # Global default Dead Letter Queue target
         self.default_dlq_broker: Optional[str] = None
         self.default_dlq_topic: Optional[str] = None
@@ -263,12 +276,65 @@ class Router:
             target_client = route_config["target_client"]
             target_topic = route_config["target_topic"]
 
-            # Exclude internal routing and DLQ metadata to pass **kwargs to publish
+            # Exclude internal routing, DLQ, and schema metadata to pass clean **kwargs to publish
+            excluded_keys = (
+                "target_client", "target_topic", "dlq_broker", "dlq_topic",
+                "input_format", "input_schema", "output_format", "output_schema",
+                "wire_format", "wire_format_in", "wire_format_out"
+            )
             raw_kwargs = {
                 k: v for k, v in route_config.items()
-                if k not in ("target_client", "target_topic", "dlq_broker", "dlq_topic")
+                if k not in excluded_keys
             }
             publish_kwargs = _translate_semantics(source_kwargs, raw_kwargs)
+
+            # Check if route specifies schema transformation
+            input_format = route_config.get("input_format")
+            output_format = route_config.get("output_format")
+            input_schema = route_config.get("input_schema")
+            output_schema = route_config.get("output_schema")
+            wire_format = route_config.get("wire_format", False)
+            wire_format_in = route_config.get("wire_format_in", wire_format if (input_format and input_format != "json") else False)
+            wire_format_out = route_config.get("wire_format_out", wire_format if (output_format and output_format != "json") else False)
+
+            needs_transform = bool(
+                output_format or output_schema or
+                (input_format and output_format and input_format != output_format)
+            )
+
+            out_message = message
+            if needs_transform:
+                in_fmt = input_format or "json"
+                out_fmt = output_format or "json"
+                try:
+                    out_message = self.converter.convert(
+                        message,
+                        input_format=in_fmt,
+                        output_format=out_fmt,
+                        input_schema=input_schema,
+                        output_schema=output_schema,
+                        wire_format_in=wire_format_in,
+                        wire_format_out=wire_format_out
+                    )
+                except Exception as e:
+                    err = SchemaValidationError(f"Schema transformation error: {e}")
+                    logger.error(f"Schema transformation failed for {source_client}/{source_topic} -> {target_client}/{target_topic}: {err}")
+                    self.metrics.record_error(source_client, "schema_validation_error")
+                    self.metrics.record_routed(source_client, target_client, status="error")
+                    if coordinator:
+                        coordinator.on_error(err)
+                    else:
+                        self._route_to_dlq(
+                            source_client,
+                            source_topic,
+                            message,
+                            error=str(err),
+                            dlq_broker=route_config.get("dlq_broker"),
+                            dlq_topic=route_config.get("dlq_topic"),
+                            ack_fn=ack_fn,
+                            nack_fn=nack_fn
+                        )
+                    continue
 
             if coordinator:
                 publish_kwargs["on_confirm"] = coordinator.on_confirm
@@ -277,7 +343,7 @@ class Router:
             if target_client in self.clients:
                 logger.info(f"Routing to {target_client} on {target_topic} args: {publish_kwargs}")
                 try:
-                    self.clients[target_client].publish(target_topic, message, **publish_kwargs)
+                    self.clients[target_client].publish(target_topic, out_message, **publish_kwargs)
                     self.metrics.record_routed(source_client, target_client, status="success")
                 except Exception as e:
                     logger.error(f"Error publishing to {target_client}: {e}")
