@@ -1,0 +1,234 @@
+# PostOffice User Guide
+
+[← Back to Project README](../../README.md)
+
+PostOffice is a high-throughput, multi-protocol messaging system and semantic translation bridge. It routes and transforms messaging payloads and delivery guarantees across MQTT, AMQP (RabbitMQ), Apache Kafka, and NanoMQ edge brokers with zero message loss.
+
+---
+
+## Table of Contents
+
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Two-Minute Quickstart](#two-minute-quickstart)
+- [Architecture & Core Concepts](#architecture--core-concepts)
+- [Feature Guides](#feature-guides)
+  - [Topic Routing & Wildcards](routing-and-wildcards.md)
+  - [Delivery Guarantees & Semantic Translation](delivery-guarantees.md)
+  - [Dynamic Schema Registry & Serialization](schema-transformation.md)
+  - [Observability & Dead Letter Queues](observability-and-dlq.md)
+  - [Distributed Control Plane & Data Plane](distributed-plane.md)
+- [Complete API Reference](#complete-api-reference)
+  - [`PostOffice` Facade](#postoffice-facade)
+  - [Route Parameters by Protocol](#route-parameters-by-protocol)
+  - [Schema Registry API](#schema-registry-api)
+- [Troubleshooting & FAQ](troubleshooting.md)
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Python Runtime:** Python 3.12+
+- **Package Manager:** `uv` (recommended) or `pip`
+- **Docker & Docker Compose:** Required only for running the optional local broker stack (Mosquitto, RabbitMQ, Kafka, NanoMQ, Redis). Not required for unit tests or standalone in-memory routing.
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/meso-ai/PostOffice.git
+   cd PostOffice
+   ```
+
+2. **Create virtual environment and install dependencies:**
+   Using `uv`:
+   ```bash
+   uv venv
+   source .venv/bin/activate
+   uv pip install -r requirements.txt
+   ```
+   Or using standard `pip`:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **Verify installation via hermetic test suite:**
+   All unit tests mock network clients offline and run in sub-second time without requiring Docker:
+   ```bash
+   PYTHONPATH=src .venv/bin/python -m unittest discover tests/
+   ```
+
+---
+
+## Two-Minute Quickstart
+
+Here is a complete, standalone script demonstrating PostOffice routing messages from an edge MQTT sensor topic to an enterprise Kafka topic, complete with Prometheus metrics and Dead Letter Queue protection:
+
+```python
+import time
+from postoffice.app import PostOffice
+
+# 1. Initialize PostOffice with Prometheus metrics and Dead Letter Queue
+po = PostOffice(
+    metrics_port=9100,           # Exposes Prometheus /metrics on port 9100
+    dlq_broker="kafka_bus",      # Failed messages divert to Kafka
+    dlq_topic="system.deadletter"# Dead-letter quarantine topic
+)
+
+# 2. Register broker connections
+po.add_broker("mqtt_edge", "mqtt", host="localhost", port=1883)
+po.add_broker("kafka_bus", "kafka", bootstrap_servers="localhost:9092")
+
+# 3. Configure high-speed wildcard route with QoS translation
+po.add_route(
+    source_broker="mqtt_edge",
+    source_topic="facilities/+/temperatures",
+    target_broker="kafka_bus",
+    target_topic="telemetry.facilities",
+    key=b"sensor_reading"
+)
+
+# 4. Subscribe edge broker to topic pattern
+po.subscribe("mqtt_edge", "facilities/+/temperatures", qos=1)
+
+# 5. Start connections and metrics HTTP server
+po.start()
+print("PostOffice routing active. Scrape metrics at http://localhost:9100/metrics")
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    po.stop()
+    print("PostOffice stopped cleanly.")
+```
+
+---
+
+## Architecture & Core Concepts
+
+PostOffice uses a strict three-tier architecture:
+
+```
++-------------------------------------------------------------------+
+|                        PostOffice Facade                         |
+|     add_broker()  |  add_route()  |  subscribe()  |  start()      |
++---------------------------------+---------------------------------+
+                                  |
+                                  v
++---------------------------------+---------------------------------+
+|                       Router Engine Core                          |
+|  TopicTrie O(k)  |  _FanoutCoordinator  |  MetricsManager         |
+|  SchemaConverter |  Dead Letter Queue   |  Anti-Recursion         |
++---------------------------------+---------------------------------+
+                                  |
+        +-------------------------+-------------------------+
+        |                         |                         |
+        v                         v                         v
++---------------+         +---------------+         +---------------+
+|  MQTT Plugin  |         |  AMQP Plugin  |         | Kafka Plugin  |
+|  (paho-mqtt)  |         |    (pika)     |         |(confluent-k.) |
++---------------+         +---------------+         +---------------+
+```
+
+1. **Facade Layer (`src/postoffice/app.py`):** Provides a uniform programmatic contract for applications, decoupling user code from specific broker client drivers.
+2. **Router Core (`src/postoffice/router.py`):**
+   - **`TopicTrie`:** $O(k)$ topic prefix matching replacing linear $O(N)$ route scans.
+   - **`_FanoutCoordinator`:** Atomic latch coordinating multi-target delivery confirmations.
+   - **`_translate_semantics`:** Maps MQTT QoS levels to AMQP persistence modes.
+   - **`SchemaConverter`:** Translates between JSON, Avro, and Protobuf on the fly.
+3. **Pluggable Broker Clients (`src/postoffice/plugins/`):** Driver plugins implementing `BaseClient` interface for MQTT, AMQP, Kafka, and NanoMQ.
+4. **Distributed Coordination:** Redis-backed `ControlPlane` and `DataPlane` workers for multi-node deployments.
+
+---
+
+## Feature Guides
+
+Detailed walkthroughs and recipes for each major capability:
+
+- **[Topic Routing & Wildcards](routing-and-wildcards.md):** Learn how MQTT-style `+` and `#` wildcards work and how the $O(k)$ TopicTrie delivers 600x+ speedups.
+- **[Delivery Guarantees & Semantic Translation](delivery-guarantees.md):** Understand end-to-end acknowledgement propagation across MQTT QoS 1/2, AMQP publisher confirms, and Kafka offset commits.
+- **[Dynamic Schema Registry & Serialization](schema-transformation.md):** Register Avro and Protobuf schemas, convert payloads dynamically, and format Confluent wire headers.
+- **[Observability & Dead Letter Queues](observability-and-dlq.md):** Configure Prometheus scraping, track routing histograms, and isolate poison pills via DLQ JSON envelopes.
+- **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub.
+
+---
+
+## Complete API Reference
+
+### `PostOffice` Facade
+
+`from postoffice.app import PostOffice`
+
+#### Constructor
+```python
+PostOffice(
+    metrics_port: Optional[int] = None,
+    dlq_broker: Optional[str] = None,
+    dlq_topic: Optional[str] = None,
+    schema_registry: Optional[BaseSchemaRegistry] = None
+)
+```
+- `metrics_port`: TCP port to run Prometheus HTTP `/metrics` scrape server. If `None`, HTTP server is disabled.
+- `dlq_broker`: Default broker identifier to receive failed or unroutable messages.
+- `dlq_topic`: Default topic/queue identifier for dead letter messages.
+- `schema_registry`: Custom `BaseSchemaRegistry` instance. Defaults to `InMemorySchemaRegistry()`.
+
+#### Methods
+- `add_broker(name: str, protocol: str, **kwargs) -> None`
+  Registers a messaging broker. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+- `add_route(source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None`
+  Configures a routing rule with optional protocol parameters and schema transformations.
+- `subscribe(broker_name: str, topic: str, **kwargs) -> None`
+  Subscribes a registered broker to a topic.
+- `register_schema(name: str, definition: Any, schema_type: str = "AVRO") -> int`
+  Registers a schema and returns its unique integer Schema ID.
+- `get_schema(name: str) -> Optional[SchemaEntry]`
+  Retrieves a registered schema entry by name.
+- `get_schema_by_id(schema_id: int) -> Optional[SchemaEntry]`
+  Retrieves a registered schema entry by ID.
+- `set_dlq(broker_name: str, topic: str) -> None`
+  Updates the global default Dead Letter Queue destination.
+- `set_metrics_port(port: Optional[int]) -> None`
+  Updates the Prometheus metrics HTTP port.
+- `start() -> None`
+  Connects all brokers and starts the metrics server.
+- `stop() -> None`
+  Disconnects all brokers and shuts down the metrics server.
+- `reset() -> None`
+  Tears down all connections, routes, and brokers, resetting the instance to an unconfigured state while preserving registry configurations.
+
+---
+
+### Route Parameters by Protocol
+
+When calling `add_route(...)`, protocol-specific publish parameters are passed via keyword arguments:
+
+| Protocol | Keyword Arguments | Types & Defaults | Description |
+|---|---|---|---|
+| **MQTT / NanoMQ** | `qos` | `int` (0, 1, 2) | MQTT Quality of Service level |
+| | `retain` | `bool` (default: `False`) | Retain message flag on broker |
+| **AMQP (RabbitMQ)** | `exchange` | `str` (default: `""`) | Target AMQP exchange name |
+| | `delivery_mode` | `int` (1=Transient, 2=Persistent) | Message persistence mode |
+| **Apache Kafka** | `key` | `bytes` or `str` | Message key for partition hashing |
+| | `partition` | `int` | Explicit target partition index |
+
+#### Schema Transformation Parameters
+Passed to `add_route(...)` to enable runtime payload conversions:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `input_format` | `str` | `"json"` | Format of incoming payload (`"json"`, `"avro"`, `"protobuf"`) |
+| `input_schema` | `str` | `None` | Registered schema name for input deserialization |
+| `output_format` | `str` | `"json"` | Format of outgoing payload (`"json"`, `"avro"`, `"protobuf"`) |
+| `output_schema` | `str` | `None` | Registered schema name for output serialization |
+| `wire_format` | `bool` | `False` | Enables Confluent 5-byte wire format framing |
+| `wire_format_in` | `bool` | `wire_format` | Overrides wire format framing for input only |
+| `wire_format_out`| `bool` | `wire_format` | Overrides wire format framing for output only |
+| `dlq_broker` | `str` | Global DLQ | Overrides dead letter queue destination broker for this route |
+| `dlq_topic` | `str` | Global DLQ | Overrides dead letter queue topic for this route |
