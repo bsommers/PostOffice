@@ -38,8 +38,8 @@
 ## v2 Requirements
 
 ### Schema Registry & Transforms
-- **SCH-01**: Dynamic payload schema conversion (e.g. JSON to Avro/Protobuf)
-- **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections
+- [x] **SCH-01**: Dynamic payload schema conversion (e.g. JSON to Avro/Protobuf)
+- [x] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections
 
 ## Out of Scope
 
@@ -60,6 +60,8 @@
 | ROUT-01 | Phase 3 | Complete |
 | OBS-01 | Phase 4 | Complete |
 | DLQ-01 | Phase 4 | Complete |
+| SCH-01 | Phase 5 | Complete |
+| SEC-01 | Phase 6 | Complete |
 
 ---
-*Requirements status: 2026-10-05*
+*Requirements status: 2026-10-13 (Milestone v2.0 Complete)*

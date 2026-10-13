@@ -19,9 +19,19 @@ class ControlPlane:
         self.r.publish(self.channel, payload)
         logger.info(f"Published update: {payload}")
 
+    def _serialize_dict(self, data: dict) -> dict:
+        result = {}
+        for k, v in data.items():
+            if hasattr(v, "to_dict") and callable(v.to_dict):
+                result[k] = v.to_dict()
+            else:
+                result[k] = v
+        return result
+
     def register_broker(self, name: str, protocol: str, **kwargs):
         """Save a new broker configuration to Redis and alert the cluster."""
-        config = {"protocol": protocol, "kwargs": kwargs}
+        serialized_kwargs = self._serialize_dict(kwargs)
+        config = {"protocol": protocol, "kwargs": serialized_kwargs}
         self.r.hset("postoffice:brokers", name, json.dumps(config))
         self._publish_update("add_broker", {"name": name, **config})
 

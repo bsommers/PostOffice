@@ -1,8 +1,9 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from postoffice.router import Router
 from postoffice.registry import ClientRegistry
 from postoffice.schema import BaseSchemaRegistry, SchemaEntry
+from postoffice.security import SecurityConfig
 
 # Import plugins to trigger registration
 import postoffice.plugins
@@ -55,16 +56,26 @@ class PostOffice:
         self.metrics_port = port
 
 
-    def add_broker(self, name: str, protocol: str, **kwargs) -> None:
+    def add_broker(
+        self,
+        name: str,
+        protocol: str,
+        security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
+        **kwargs
+    ) -> None:
         """
         Registers a new messaging broker into the PostOffice network.
 
         :param name: Unique internal identifier for the broker (e.g. 'mqtt_1')
         :param protocol: The protocol type ('mqtt', 'amqp', 'kafka', 'nanomq')
+        :param security_config: Optional TLS/mTLS and authentication settings (SecurityConfig or dict)
         :param kwargs: Broker specific connection params (e.g. host, port, bootstrap_servers, user)
         """
         if name in self.brokers:
             raise ValueError(f"Broker with name '{name}' already exists.")
+
+        if security_config is not None:
+            kwargs["security_config"] = security_config
 
         logger.info(f"Adding broker '{name}' via protocol '{protocol}'")
         client = ClientRegistry.create_client(protocol, name, self.router, **kwargs)

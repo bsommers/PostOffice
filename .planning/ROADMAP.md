@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.1 Hardened Mesh & Delivery Guarantees** — Phases 1-4 (shipped 2026-10-07)
-- 📋 **v2.0 Schema Transformation & Production Security** — Phases 5-6 (planned)
+- ✅ **v2.0 Schema Transformation & Production Security** — Phases 5-6 (completed 2026-10-13)
 
 ## Phases
 
@@ -21,12 +21,15 @@
 
 </details>
 
-### 📋 v2.0 Schema Transformation & Production Security (Planned)
+<details open>
+<summary>✅ v2.0 Schema Transformation & Production Security (Phases 5-6) — COMPLETED 2026-10-13</summary>
 
 - [x] **Phase 5: Dynamic Schema Registry & Serialization** (2/2 plans) — completed 2026-10-08
   - Integrated dynamic payload schema conversion across JSON, Apache Avro, and Protocol Buffers with DLQ error handling.
-- [ ] **Phase 6: Production Security, TLS/mTLS & Authentication**
+- [x] **Phase 6: Production Security, TLS/mTLS & Authentication** (2/2 plans) — completed 2026-10-13
   - Enforce TLS/mTLS certificate verification, SASL authentication, and credential rotation across all client plugins.
+
+</details>
 
 ## Progress
 
@@ -37,4 +40,4 @@
 | 3. Route Engine Trie Optimization | v1.1 | 1/1 | Complete | 2026-10-06 |
 | 4. Observability & Dead Letter Queues | v1.1 | 2/2 | Complete | 2026-10-07 |
 | 5. Schema Registry & Transforms | v2.0 | 2/2 | Complete | 2026-10-08 |
-| 6. Production Security & Auth | v2.0 | 0/2 | Planned | - |
+| 6. Production Security & Auth | v2.0 | 2/2 | Complete | 2026-10-13 |

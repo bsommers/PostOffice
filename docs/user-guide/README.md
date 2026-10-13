@@ -19,8 +19,10 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
   - [Dynamic Schema Registry & Serialization](schema-transformation.md)
   - [Observability & Dead Letter Queues](observability-and-dlq.md)
   - [Distributed Control Plane & Data Plane](distributed-plane.md)
+  - [Production Security, TLS/mTLS & Authentication](security-and-auth.md)
 - [Complete API Reference](#complete-api-reference)
   - [`PostOffice` Facade](#postoffice-facade)
+  - [Security Configuration (`SecurityConfig`)](#security-configuration-securityconfig)
   - [Route Parameters by Protocol](#route-parameters-by-protocol)
   - [Schema Registry API](#schema-registry-api)
 - [Troubleshooting & FAQ](troubleshooting.md)
@@ -156,6 +158,7 @@ Detailed walkthroughs and recipes for each major capability:
 - **[Dynamic Schema Registry & Serialization](schema-transformation.md):** Register Avro and Protobuf schemas, convert payloads dynamically, and format Confluent wire headers.
 - **[Observability & Dead Letter Queues](observability-and-dlq.md):** Configure Prometheus scraping, track routing histograms, and isolate poison pills via DLQ JSON envelopes.
 - **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub.
+- **[Production Security, TLS/mTLS & Authentication](security-and-auth.md):** Configure TLS socket encryption, client certificates (mTLS), and SASL authentication across all brokers.
 
 ---
 
@@ -180,8 +183,34 @@ PostOffice(
 - `schema_registry`: Custom `BaseSchemaRegistry` instance. Defaults to `InMemorySchemaRegistry()`.
 
 #### Methods
-- `add_broker(name: str, protocol: str, **kwargs) -> None`
-  Registers a messaging broker. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+- `add_broker(name: str, protocol: str, security_config: Optional[Union[SecurityConfig, dict]] = None, **kwargs) -> None`
+  Registers a messaging broker with optional TLS/mTLS or SASL security settings. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+
+---
+
+### Security Configuration (`SecurityConfig`)
+
+`from postoffice.security import SecurityConfig`
+
+```python
+SecurityConfig(
+    tls_enabled: bool = False,
+    ca_cert: Optional[str] = None,
+    client_cert: Optional[str] = None,
+    client_key: Optional[str] = None,
+    client_key_password: Optional[str] = None,
+    insecure_skip_verify: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    sasl_mechanism: Optional[str] = None
+)
+```
+- `tls_enabled`: Enables TLS encryption. Automatically switches default ports (MQTT to 8883, AMQP to 5671, NanoMQ to 8884).
+- `ca_cert`: Path to Root CA certificate file for server verification.
+- `client_cert` / `client_key`: Mutual TLS client certificate and private key paths.
+- `insecure_skip_verify`: Bypasses TLS hostname and certificate checks (development only).
+- `username` / `password`: Basic credentials for MQTT/AMQP or SASL authentication for Kafka.
+- `sasl_mechanism`: Kafka SASL mechanism (`"PLAIN"`, `"SCRAM-SHA-256"`, `"SCRAM-SHA-512"`). Automatically configures Kafka `security.protocol` to `SASL_SSL` or `SASL_PLAINTEXT`.
 - `add_route(source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None`
   Configures a routing rule with optional protocol parameters and schema transformations.
 - `subscribe(broker_name: str, topic: str, **kwargs) -> None`
