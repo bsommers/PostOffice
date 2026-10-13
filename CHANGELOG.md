@@ -4,6 +4,26 @@ All notable changes to the PostOffice project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-13
+
+### Added
+- **Dynamic Schema Registry & Serialization (`SCH-01`):**
+  - Pluggable schema registry backends (`postoffice.schema.InMemorySchemaRegistry`, `postoffice.schema.RedisSchemaRegistry`) supporting runtime registration and schema versioning.
+  - Bidirectional dynamic payload translation across JSON, Apache Avro (`fastavro`), and Protocol Buffers (`protobuf 7.x`).
+  - Confluent 5-byte wire format framing (`encode_wire_format`, `decode_wire_format`) with 4-byte big-endian Schema IDs.
+  - Automatic Dead Letter Queue diversion on schema validation failures with upstream acknowledgement.
+  - Facade helper methods: `register_schema()`, `get_schema()`, `get_schema_by_id()`.
+- **Production Security, TLS/mTLS & Authentication (`SEC-01`):**
+  - Unified `SecurityConfig` dataclass normalizing TLS/mTLS options (`ca_cert`, `client_cert`, `client_key`, `insecure_skip_verify`) and credentials (`username`, `password`, `sasl_mechanism`).
+  - Hardened MQTT & NanoMQ drivers with OpenSSL socket configuration and automated port shifting (1883->8883, 1884->8884).
+  - Hardened AMQP driver with `pika.SSLOptions`, `ssl.SSLContext`, and automated port shifting (5672->5671).
+  - Hardened Kafka driver with dynamic `security.protocol` resolution (`SSL`, `SASL_PLAINTEXT`, `SASL_SSL`) and librdkafka SCRAM/PLAIN credentials.
+  - Redis Control Plane state serialization and DataPlane worker live sync for secure brokers.
+- **Documentation Suite:**
+  - 7 comprehensive user guide documents in `docs/user-guide/` covering wildcards, delivery guarantees, schemas, observability, distributed planes, security, and troubleshooting.
+
+---
+
 ## [1.1.0] - 2026-10-07
 
 ### Added

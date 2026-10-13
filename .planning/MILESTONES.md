@@ -4,6 +4,30 @@ This document tracks all completed and active milestone releases of PostOffice.
 
 ---
 
+## [v2.0] Schema Transformation & Production Security
+
+**Shipped:** 2026-10-13
+**Phases:** 2 (Phases 5–6)
+**Plans:** 4 total (05-01, 05-02, 06-01, 06-02)
+**Unit Tests:** 76 tests passing hermetically in 0.538s
+**Audit Report:** `.planning/v2.0-MILESTONE-AUDIT.md` (Passed)
+**Changelog:** `CHANGELOG.md` ([2.0.0])
+
+### Delivered
+Enterprise-grade schema management and production security layer enabling runtime schema translation (JSON ↔ Avro ↔ Protobuf) with Confluent wire format framing and unified TLS/mTLS and SASL security across MQTT, AMQP, Kafka, and NanoMQ edge brokers.
+
+### Key Accomplishments
+1. **Dynamic Schema Registry & Wire Framing (`SCH-01`):** In-Memory and Redis schema backends, bidirectional transformations, Confluent 5-byte framing, and DLQ error routing.
+2. **Production Security & mTLS (`SEC-01`):** Unified `SecurityConfig` dataclass, mutual TLS certificates, Kafka SASL SCRAM/PLAIN, automatic port shifting, and Redis cluster state synchronization.
+3. **Comprehensive User Documentation:** 7 exhaustive user guide manuals in `docs/user-guide/` covering all architectural capabilities.
+4. **Hermetic Test Suite:** 76 offline unit tests across 11 test modules with 100% pass rate.
+
+### Git Information
+- **Tag:** `v2.0.0`
+- **Verification:** All 10 requirements across v1, v1.1, and v2 verified in unit test suite.
+
+---
+
 ## [v1.1] Hardened Mesh & Delivery Guarantees
 
 **Shipped:** 2026-10-07
