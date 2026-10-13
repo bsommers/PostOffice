@@ -1,7 +1,9 @@
+import ssl
 import pika
 from postoffice.base_client import BaseClient
 from postoffice.registry import ClientRegistry
-from typing import Optional, Callable
+from postoffice.security import SecurityConfig, ensure_security_config
+from typing import Optional, Callable, Union, Dict, Any
 import logging
 import threading
 
@@ -9,11 +11,30 @@ logger = logging.getLogger(__name__)
 
 @ClientRegistry.register("amqp")
 class AmqpClient(BaseClient):
-    def __init__(self, name: str, router: any, host: str = "localhost", user: str = "user", password: str = "password"):
+    def __init__(
+        self,
+        name: str,
+        router: any,
+        host: str = "localhost",
+        port: Optional[int] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
+        **kwargs
+    ):
         super().__init__(name, router)
         self.host = host
-        self.user = user
-        self.password = password
+        self.security = ensure_security_config(security_config)
+        self.user = self.security.username if self.security.username is not None else (user if user is not None else "user")
+        self.password = self.security.password if self.security.password is not None else (password if password is not None else "password")
+
+        if port is None:
+            self.port = 5671 if self.security.tls_enabled else 5672
+        elif port == 5672 and self.security.tls_enabled:
+            self.port = 5671
+        else:
+            self.port = port
+
         self.connection = None
         self.channel = None
         self.thread = None
@@ -141,13 +162,33 @@ class AmqpClient(BaseClient):
     def _consume_loop(self):
         try:
             credentials = pika.PlainCredentials(self.user, self.password)
-            parameters = pika.ConnectionParameters(self.host, 5672, '/', credentials)
+            ssl_options = None
+            if self.security.tls_enabled:
+                context = ssl.create_default_context(cafile=self.security.ca_cert)
+                if self.security.client_cert and self.security.client_key:
+                    context.load_cert_chain(
+                        certfile=self.security.client_cert,
+                        keyfile=self.security.client_key,
+                        password=self.security.client_key_password,
+                    )
+                if self.security.insecure_skip_verify:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                ssl_options = pika.SSLOptions(context, server_hostname=self.host)
+
+            parameters = pika.ConnectionParameters(
+                host=self.host,
+                port=self.port,
+                virtual_host='/',
+                credentials=credentials,
+                ssl_options=ssl_options,
+            )
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
-            logger.info(f"{self.name} connected to AMQP broker")
+            logger.info(f"{self.name} connected to AMQP broker at {self.host}:{self.port}")
             self._connected_event.set()
         except pika.exceptions.AMQPConnectionError:
-            logger.error(f"Failed to connect to AMQP broker at {self.host}:5672")
+            logger.error(f"Failed to connect to AMQP broker at {self.host}:{self.port}")
             self._connected_event.set() # Unblock connect loop on fail
             return
 

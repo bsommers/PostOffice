@@ -1,18 +1,50 @@
+import ssl
 import paho.mqtt.client as mqtt
 from postoffice.base_client import BaseClient
 from postoffice.registry import ClientRegistry
-from typing import Optional, Callable
+from postoffice.security import SecurityConfig, ensure_security_config
+from typing import Optional, Callable, Union, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 @ClientRegistry.register("mqtt")
 class MqttClient(BaseClient):
-    def __init__(self, name: str, router: any, host: str = "localhost", port: int = 1883):
+    def __init__(
+        self,
+        name: str,
+        router: any,
+        host: str = "localhost",
+        port: Optional[int] = None,
+        security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
+        **kwargs
+    ):
         super().__init__(name, router)
         self.host = host
-        self.port = port
+        self.security = ensure_security_config(security_config)
+        if port is None:
+            self.port = 8883 if self.security.tls_enabled else 1883
+        elif port == 1883 and self.security.tls_enabled:
+            self.port = 8883
+        else:
+            self.port = port
+
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.name)
+        if self.security.username is not None:
+            self.client.username_pw_set(self.security.username, self.security.password)
+
+        if self.security.tls_enabled:
+            cert_reqs = ssl.CERT_NONE if self.security.insecure_skip_verify else ssl.CERT_REQUIRED
+            self.client.tls_set(
+                ca_certs=self.security.ca_cert,
+                certfile=self.security.client_cert,
+                keyfile=self.security.client_key,
+                cert_reqs=cert_reqs,
+                tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            )
+            if self.security.insecure_skip_verify:
+                self.client.tls_insecure_set(True)
+
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.subscribed_topics = []

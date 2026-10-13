@@ -1,7 +1,8 @@
 from confluent_kafka import Consumer, Producer, KafkaError
 from postoffice.base_client import BaseClient
 from postoffice.registry import ClientRegistry
-from typing import Optional, Callable
+from postoffice.security import SecurityConfig, ensure_security_config
+from typing import Optional, Callable, Union, Dict, Any
 import logging
 import threading
 
@@ -9,9 +10,17 @@ logger = logging.getLogger(__name__)
 
 @ClientRegistry.register("kafka")
 class KafkaClient(BaseClient):
-    def __init__(self, name: str, router: any, bootstrap_servers: str = "localhost:9092"):
+    def __init__(
+        self,
+        name: str,
+        router: any,
+        bootstrap_servers: str = "localhost:9092",
+        security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
+        **kwargs
+    ):
         super().__init__(name, router)
         self.bootstrap_servers = bootstrap_servers
+        self.security = ensure_security_config(security_config)
         self.producer = None
         self.consumer = None
         self.thread = None
@@ -20,14 +29,49 @@ class KafkaClient(BaseClient):
         self._subscribe_lock = threading.Lock()
         self._pending_subscriptions = []
 
+    def _build_kafka_config(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        conf: Dict[str, Any] = {'bootstrap.servers': self.bootstrap_servers}
+        has_tls = self.security.tls_enabled
+        has_sasl = bool(self.security.username and self.security.sasl_mechanism)
+
+        if has_tls and has_sasl:
+            conf['security.protocol'] = 'SASL_SSL'
+        elif has_tls:
+            conf['security.protocol'] = 'SSL'
+        elif has_sasl:
+            conf['security.protocol'] = 'SASL_PLAINTEXT'
+
+        if has_tls:
+            if self.security.ca_cert:
+                conf['ssl.ca.location'] = self.security.ca_cert
+            if self.security.client_cert:
+                conf['ssl.certificate.location'] = self.security.client_cert
+            if self.security.client_key:
+                conf['ssl.key.location'] = self.security.client_key
+            if self.security.client_key_password:
+                conf['ssl.key.password'] = self.security.client_key_password
+            if self.security.insecure_skip_verify:
+                conf['enable.ssl.certificate.verification'] = False
+
+        if has_sasl:
+            conf['sasl.mechanism'] = self.security.sasl_mechanism
+            conf['sasl.username'] = self.security.username
+            if self.security.password:
+                conf['sasl.password'] = self.security.password
+
+        if extra:
+            conf.update(extra)
+        return conf
+
     def connect(self):
         try:
-            self.producer = Producer({'bootstrap.servers': self.bootstrap_servers})
-            self.consumer = Consumer({
-                'bootstrap.servers': self.bootstrap_servers,
+            prod_conf = self._build_kafka_config()
+            cons_conf = self._build_kafka_config({
                 'group.id': f"{self.name}_group",
                 'auto.offset.reset': 'earliest'
             })
+            self.producer = Producer(prod_conf)
+            self.consumer = Consumer(cons_conf)
             logger.info(f"{self.name} connected to Kafka broker")
 
             self.thread = threading.Thread(target=self._consume_loop)
