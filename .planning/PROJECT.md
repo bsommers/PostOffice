@@ -25,10 +25,14 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **OBS-01**: Observability and metrics instrumentation (`MetricsManager`, Prometheus counters/histogram, HTTP exporter) — v1.1
 - [x] **DLQ-01**: Dead Letter Queue (DLQ) support for unroutable or failed messages with JSON envelope and anti-recursion protection — v1.1
 - [x] **SCH-01**: Dynamic payload schema conversion and schema registry integration (`BaseSchemaRegistry`, JSON ↔ Avro ↔ Protobuf, Confluent wire format) — v2.0
+- [x] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections — v2.0
 
-### Active (v2.0 Roadmap)
+### Future Considerations (v2.1 / v3.0 Candidates)
 
-- [ ] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections
+- **RES-01**: Standardized offline subscription queuing and in-memory publish buffers across all adapters
+- **FLT-01**: Dynamic content-based filtering (JSONPath/CEL expressions) in topic routes
+- **INT-01**: Live multi-broker integration test suite running against Docker Compose stack
+- **ADPT-01**: Additional protocol adapters (HTTP/Webhooks, gRPC, WebSocket)
 
 ### Out of Scope
 
