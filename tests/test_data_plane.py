@@ -166,5 +166,37 @@ class TestDataPlane(unittest.TestCase):
         self.assertTrue(mock_pubsub.subscribe.called)
         self.assertGreaterEqual(mock_pubsub.listen.call_count, 1)
 
+    def test_sync_state_retries_on_redis_connection_error_and_raises_after_max(self):
+        attempts = [0]
+
+        def flaky_hgetall(key):
+            attempts[0] += 1
+            if attempts[0] < 3:
+                raise redis.ConnectionError("Transient Redis failure")
+            return {}
+
+        self.dp.r.hgetall = MagicMock(side_effect=flaky_hgetall)
+        self.dp.sync_state(max_retries=5, retry_delay=0.001)
+        self.assertGreaterEqual(attempts[0], 3)
+
+        # Verify max_retries exhaustion raises ConnectionError
+        self.dp.r.hgetall = MagicMock(side_effect=redis.ConnectionError("Permanent Redis failure"))
+        with self.assertRaises(redis.ConnectionError):
+            self.dp.sync_state(max_retries=2, retry_delay=0.001)
+
+    def test_data_plane_run_starts_and_stops_cleanly(self):
+        self.dp.sync_state = MagicMock()
+        self.dp.po.start = MagicMock()
+        self.dp.po.stop = MagicMock()
+        self.dp._listen_for_updates = MagicMock()
+
+        self.dp.run()
+
+        self.dp.sync_state.assert_called_once()
+        self.dp.po.start.assert_called_once()
+        self.dp.po.stop.assert_called_once()
+        self.assertTrue(self.dp._stop_event.is_set())
+
+
 if __name__ == '__main__':
     unittest.main()

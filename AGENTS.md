@@ -12,6 +12,10 @@ PostOffice is a multi-protocol messaging system and translation bridge routing d
   ```bash
   PYTHONPATH=src .venv/bin/python -m unittest discover tests/
   ```
+- **Run Coverage Gate (Enforces >= 90% Branch + Statement Coverage):**
+  ```bash
+  PYTHONPATH=src .venv/bin/coverage run -m unittest discover tests/ && .venv/bin/coverage report
+  ```
 - **Run Single Test File:**
   ```bash
   PYTHONPATH=src .venv/bin/python -m unittest tests/test_postoffice.py

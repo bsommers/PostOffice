@@ -170,6 +170,36 @@ class TestSchemaConverters(unittest.TestCase):
                 output_schema="TelemetryAvro"
             )
 
+    def test_schema_resolution_and_format_error_branches(self):
+        # 1. Unknown schema name
+        with self.assertRaises(SchemaValidationError):
+            self.converter.serialize({"a": 1}, "avro", schema_name="DoesNotExist")
+
+        # 2. Schema type mismatch (requesting AVRO on a PROTOBUF schema)
+        with self.assertRaises(SchemaValidationError):
+            self.converter.serialize({"device_id": "x"}, "avro", schema_name="TelemetryProto")
+
+        # 3. Unknown schema ID in wire format header
+        unknown_framed = encode_wire_format(b"payload", schema_id=9999)
+        with self.assertRaises(SchemaValidationError):
+            self.converter.deserialize(unknown_framed, "avro", wire_format=True)
+
+        # 4. Unsupported input and output formats
+        with self.assertRaises(SchemaValidationError):
+            self.converter.deserialize(b"{}", "xml")
+        with self.assertRaises(SchemaValidationError):
+            self.converter.serialize({"a": 1}, "xml")
+
+        # 5. JSON serialize with wire_format=True and schema_name lookup
+        framed_json = self.converter.serialize(
+            {"device_id": "d1", "voltage": 1.0, "active": True},
+            "json",
+            schema_name="TelemetryAvro",
+            wire_format=True,
+        )
+        sid, raw = decode_wire_format(framed_json)
+        self.assertEqual(sid, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

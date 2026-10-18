@@ -38,5 +38,42 @@ class TestPostOfficeScaffold(unittest.TestCase):
         po.router.route("kafka_1", "sensor_events", b'{"temp": 25}')
         amqp_client.publish.assert_called_once_with("amqp_queue", b'{"temp": 25}', exchange="test_exchange", delivery_mode=2)
 
+    @patch('postoffice.plugins.mqtt_client.mqtt.Client')
+    def test_facade_lifecycle_and_validation_guards(self, MockMqtt):
+        po = PostOffice(dlq_broker="mqtt_1", dlq_topic="dlq/topic")
+        po.set_metrics_port(None)
+
+        po.add_broker("mqtt_1", "mqtt", circuit_breaker_threshold=3, circuit_breaker_timeout=10.0)
+        self.assertIn("mqtt_1", po.router.circuit_breakers)
+
+        # Duplicate broker registration raises ValueError
+        with self.assertRaises(ValueError):
+            po.add_broker("mqtt_1", "mqtt")
+
+        # Invalid broker names in add_route / subscribe / reload_broker_security raise ValueError
+        with self.assertRaises(ValueError):
+            po.add_route("missing_src", "t1", "mqtt_1", "t2")
+        with self.assertRaises(ValueError):
+            po.add_route("mqtt_1", "t1", "missing_tgt", "t2")
+        with self.assertRaises(ValueError):
+            po.subscribe("missing_broker", "t1")
+        with self.assertRaises(ValueError):
+            po.reload_broker_security("missing_broker", {})
+
+        # Start PostOffice -> connects registered brokers
+        po.start()
+        self.assertTrue(po.is_running)
+
+        # Adding a broker while is_running=True connects it immediately
+        po.add_broker("mqtt_2", "mqtt")
+
+        # Subscribe via facade
+        po.subscribe("mqtt_1", "sensors/#", qos=1)
+
+        # Reset and stop
+        po.reset()
+        self.assertFalse(po.is_running)
+        self.assertEqual(len(po.brokers), 0)
+
 if __name__ == '__main__':
     unittest.main()

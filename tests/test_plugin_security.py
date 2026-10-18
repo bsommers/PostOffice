@@ -121,12 +121,13 @@ class TestPluginSecurity(unittest.TestCase):
     def test_kafka_security_protocols(self, MockProducer, MockConsumer):
         router = MagicMock()
 
-        # 1. Plain SSL
+        # 1. Plain SSL with encrypted client key password
         sec_ssl = SecurityConfig(
             tls_enabled=True,
             ca_cert="/certs/ca.pem",
             client_cert="/certs/client.pem",
             client_key="/certs/client.key",
+            client_key_password="secret_key_passphrase",
         )
         client_ssl = KafkaClient("kafka_ssl", router, bootstrap_servers="kafka:9093", security_config=sec_ssl)
         conf_ssl = client_ssl._build_kafka_config()
@@ -134,6 +135,7 @@ class TestPluginSecurity(unittest.TestCase):
         self.assertEqual(conf_ssl["ssl.ca.location"], "/certs/ca.pem")
         self.assertEqual(conf_ssl["ssl.certificate.location"], "/certs/client.pem")
         self.assertEqual(conf_ssl["ssl.key.location"], "/certs/client.key")
+        self.assertEqual(conf_ssl["ssl.key.password"], "secret_key_passphrase")
         self.assertNotIn("sasl.mechanism", conf_ssl)
 
         # 2. SASL_PLAINTEXT

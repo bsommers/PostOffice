@@ -142,6 +142,52 @@ class TestRouterCircuitBreakerBackpressure(unittest.TestCase):
         self.assertEqual(probe_acked, [True])
         self.assertEqual(acked_buffered, [1, 2, 3])
 
+    def test_circuit_breaker_open_without_publish_buffer_routes_directly_to_dlq(self):
+        router = Router()
+        src = FakeBrokerClient("src", router)
+        # Buffering disabled (enable_publish_buffer=False)
+        tgt = FakeBrokerClient("tgt", router, enable_publish_buffer=False)
+        dlq = FakeBrokerClient("dlq", router)
+
+        router.register_client(src)
+        router.register_client(tgt)
+        router.register_client(dlq)
+        router.set_dlq("dlq", "system/dlq")
+        router.add_route("src", "events/+", "tgt", "downstream/events")
+
+        cb = router.configure_circuit_breaker("tgt", failure_threshold=1, recovery_timeout=60.0)
+
+        # 1st message fails -> trips circuit to OPEN
+        tgt.fail_next_publishes = 1
+        router.route("src", "events/1", b"fail_1")
+        self.assertEqual(cb.state, CircuitState.OPEN)
+        self.assertEqual(cb.failure_count, 1)
+        self.assertEqual(len(dlq.published), 1)
+
+        # 2nd message arrives while OPEN (both with and without ack_fn) -> immediately routed to DLQ
+        acked = []
+        router.route("src", "events/2", b"blocked_1", ack_fn=lambda: acked.append(True))
+        router.route("src", "events/3", b"blocked_2")
+        self.assertEqual(len(dlq.published), 3)
+        self.assertEqual(acked, [True])
+
+        # Reset circuit breaker -> next message succeeds
+        cb.reset()
+        self.assertEqual(cb.state, CircuitState.CLOSED)
+        self.assertEqual(cb.failure_count, 0)
+        router.route("src", "events/4", b"ok_msg")
+        self.assertEqual(len(tgt.published), 1)
+
+    def test_circuit_breaker_validation_and_facade_wiring(self):
+        with self.assertRaises(ValueError):
+            CircuitBreaker(failure_threshold=0)
+        with self.assertRaises(ValueError):
+            CircuitBreaker(recovery_timeout=-1.0)
+
+        po = PostOffice()
+        with self.assertRaises(ValueError):
+            po.configure_circuit_breaker("missing_broker")
+
 
 if __name__ == "__main__":
     unittest.main()

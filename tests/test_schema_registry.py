@@ -124,6 +124,50 @@ class TestSchemaRegistry(unittest.TestCase):
         entry_by_id = redis_reg.get_schema_by_id(1)
         self.assertIsNotNone(entry_by_id)
         self.assertEqual(entry_by_id.name, "MetricSchema")
+        self.assertIn("MetricSchema", repr(entry_by_id))
+
+        # Re-register existing schema in Redis to test version increment
+        schema_id_v2 = redis_reg.register_schema("MetricSchema", schema_dict, "AVRO")
+        self.assertEqual(schema_id_v2, 1)
+
+        # Instantiate a second RedisSchemaRegistry (cold local_cache) against the same Redis storage
+        # to exercise cold-cache Redis hydration in get_schema() and get_schema_by_id()
+        cold_reg_1 = RedisSchemaRegistry(mock_redis, prefix="test:schemas")
+        hydrated_by_name = cold_reg_1.get_schema("MetricSchema")
+        self.assertIsNotNone(hydrated_by_name)
+        self.assertEqual(hydrated_by_name.name, "MetricSchema")
+        self.assertIsNone(cold_reg_1.get_schema("UnknownSchema"))
+
+        cold_reg_2 = RedisSchemaRegistry(mock_redis, prefix="test:schemas")
+        hydrated_by_id = cold_reg_2.get_schema_by_id(1)
+        self.assertIsNotNone(hydrated_by_id)
+        self.assertEqual(hydrated_by_id.name, "MetricSchema")
+        self.assertIsNone(cold_reg_2.get_schema_by_id(999))
+
+    def test_avro_json_string_and_protobuf_repeated_fields(self):
+        registry = InMemorySchemaRegistry()
+        avro_json_str = json.dumps({
+            "type": "record",
+            "name": "StrSchema",
+            "fields": [{"name": "id", "type": "string"}]
+        })
+        sid = registry.register_schema("StrSchema", avro_json_str, "AVRO")
+        self.assertEqual(sid, 1)
+
+        proto_repeated = {
+            "package": "pkg",
+            "message_name": "Batch",
+            "fields": [{"name": "tags", "type": "string", "number": 1, "label": "repeated"}]
+        }
+        pid = registry.register_schema("Batch", proto_repeated, "PROTOBUF")
+        self.assertEqual(pid, 2)
+        entry = registry.get_schema("Batch")
+        # Register using already compiled Message class directly
+        pid2 = registry.register_schema("BatchDirect", entry.parsed_schema, "PROTOBUF")
+        self.assertEqual(pid2, 3)
+
+        with self.assertRaises(ValueError):
+            registry.register_schema("BadProto", 12345, "PROTOBUF")
 
 
 if __name__ == "__main__":
