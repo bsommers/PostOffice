@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.1 Hardened Mesh & Delivery Guarantees** — Phases 1-4 (shipped 2026-10-07)
-- ✅ **v2.0 Schema Transformation & Production Security** — Phases 5-6 (completed 2026-10-13)
+- ✅ **v2.0 Schema Transformation & Production Security** — Phases 5-6 (shipped 2026-10-13)
+- ✅ **v2.1 Operational Resiliency & In-Flight Queuing** — Phases 7-8 (completed 2026-10-18)
 
 ## Phases
 
@@ -21,13 +22,23 @@
 
 </details>
 
-<details open>
-<summary>✅ v2.0 Schema Transformation & Production Security (Phases 5-6) — COMPLETED 2026-10-13</summary>
+<details>
+<summary>✅ v2.0 Schema Transformation & Production Security (Phases 5-6) — SHIPPED 2026-10-13</summary>
 
 - [x] **Phase 5: Dynamic Schema Registry & Serialization** (2/2 plans) — completed 2026-10-08
   - Integrated dynamic payload schema conversion across JSON, Apache Avro, and Protocol Buffers with DLQ error handling.
 - [x] **Phase 6: Production Security, TLS/mTLS & Authentication** (2/2 plans) — completed 2026-10-13
   - Enforce TLS/mTLS certificate verification, SASL authentication, and credential rotation across all client plugins.
+
+</details>
+
+<details open>
+<summary>✅ v2.1 Operational Resiliency & In-Flight Queuing (Phases 7-8) — COMPLETED 2026-10-18</summary>
+
+- [x] **Phase 7: Operational Resiliency & Client Queuing** (2/2 plans) — completed 2026-10-17
+  - Standardized offline subscription queuing and thread-safe bounded publish buffers across `BaseClient`, `MqttClient`, `NanoMqClient`, `AmqpClient`, and `KafkaClient` with automatic reconnect replay (`RES-01`).
+- [x] **Phase 8: Egress Backpressure, Circuit Breakers & Credential Hot-Reload** (2/2 plans) — completed 2026-10-18
+  - Egress circuit breaker state machines, backpressure coordination before DLQ fallback (`RES-02`), and live TLS certificate/credential reload via Control Plane updates (`RES-03`).
 
 </details>
 
@@ -41,3 +52,6 @@
 | 4. Observability & Dead Letter Queues | v1.1 | 2/2 | Complete | 2026-10-07 |
 | 5. Schema Registry & Transforms | v2.0 | 2/2 | Complete | 2026-10-08 |
 | 6. Production Security & Auth | v2.0 | 2/2 | Complete | 2026-10-13 |
+| 7. Operational Resiliency & Client Queuing | v2.1 | 2/2 | Complete | 2026-10-17 |
+| 8. Backpressure, Circuit Breakers & Hot-Reload | v2.1 | 2/2 | Complete | 2026-10-18 |
+

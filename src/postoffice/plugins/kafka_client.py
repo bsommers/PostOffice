@@ -18,7 +18,7 @@ class KafkaClient(BaseClient):
         security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
         **kwargs
     ):
-        super().__init__(name, router)
+        super().__init__(name, router, **kwargs)
         self.bootstrap_servers = bootstrap_servers
         self.security = ensure_security_config(security_config)
         self.producer = None
@@ -74,6 +74,8 @@ class KafkaClient(BaseClient):
             self.consumer = Consumer(cons_conf)
             logger.info(f"{self.name} connected to Kafka broker")
 
+            self.flush_publish_buffer()
+
             self.thread = threading.Thread(target=self._consume_loop)
             self.thread.daemon = True
             self.thread.start()
@@ -89,10 +91,27 @@ class KafkaClient(BaseClient):
         if self.producer:
             self.producer.flush()
 
+    def reload_security(self, security_config: Optional[Union[SecurityConfig, Dict[str, Any]]]) -> None:
+        was_active = bool(self.producer is not None or self.consumer is not None)
+        if was_active:
+            self.disconnect()
+
+        self.security = ensure_security_config(security_config)
+        logger.info(f"{self.name}: Reloaded Kafka security configuration (tls_enabled={self.security.tls_enabled})")
+
+        if was_active:
+            self._stop_event.clear()
+            with self._subscribe_lock:
+                for topic in self.subscribed_topics:
+                    if topic not in self._pending_subscriptions:
+                        self._pending_subscriptions.append(topic)
+                self.subscribed_topics = []
+            self.connect()
+
     def subscribe(self, topic: str, **kwargs):
+        self.record_subscription(topic, **kwargs)
         if not self.consumer:
-            logger.error(f"{self.name}: Cannot subscribe to {topic}, consumer is not connected.")
-            return
+            logger.warning(f"{self.name}: Consumer not connected. Topic {topic} queued for subscription on connect.")
 
         with self._subscribe_lock:
             if topic not in self.subscribed_topics and topic not in self._pending_subscriptions:
@@ -108,6 +127,9 @@ class KafkaClient(BaseClient):
         **kwargs
     ):
         if not self.producer:
+            if self.buffer_publish(topic, message, on_confirm=on_confirm, on_error=on_error, **kwargs):
+                logger.info(f"{self.name}: Producer not connected. Message to {topic} buffered for publish on connect.")
+                return
             logger.error(f"{self.name}: Cannot publish to {topic}, producer is not connected.")
             if on_error:
                 on_error(RuntimeError(f"{self.name}: Producer is not connected."))
@@ -173,4 +195,5 @@ class KafkaClient(BaseClient):
                 partition=msg.partition(),
                 offset=msg.offset()
             )
+
 

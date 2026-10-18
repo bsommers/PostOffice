@@ -41,6 +41,13 @@
 - [x] **SCH-01**: Dynamic payload schema conversion (e.g. JSON to Avro/Protobuf)
 - [x] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections
 
+## v2.1 Active Requirements
+
+### Operational Resiliency, Queuing & Hot Reload
+- [x] **RES-01**: Standardized offline subscription queuing and thread-safe in-flight publish buffers across all protocol adapters (`MqttClient`, `NanoMqClient`, `AmqpClient`, `KafkaClient`)
+- [x] **RES-02**: Egress backpressure, bounded ring-buffer failover, and per-broker circuit breaker protection for degraded or offline target brokers before DLQ drop
+- [x] **RES-03**: Dynamic in-flight TLS certificate and credential hot-reload without worker process restart
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -62,6 +69,10 @@
 | DLQ-01 | Phase 4 | Complete |
 | SCH-01 | Phase 5 | Complete |
 | SEC-01 | Phase 6 | Complete |
+| RES-01 | Phase 7 | Complete |
+| RES-02 | Phase 8 | Complete |
+| RES-03 | Phase 8 | Complete |
 
 ---
-*Requirements status: 2026-10-13 (Milestone v2.0 Complete)*
+*Requirements status: 2026-10-18 (Milestone v2.1 Complete)*
+

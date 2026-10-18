@@ -26,10 +26,12 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **DLQ-01**: Dead Letter Queue (DLQ) support for unroutable or failed messages with JSON envelope and anti-recursion protection — v1.1
 - [x] **SCH-01**: Dynamic payload schema conversion and schema registry integration (`BaseSchemaRegistry`, JSON ↔ Avro ↔ Protobuf, Confluent wire format) — v2.0
 - [x] **SEC-01**: TLS/mTLS and token authentication enforcement for production broker connections — v2.0
+- [x] **RES-01**: Standardized offline subscription queuing and thread-safe in-flight publish buffers across all adapters (`MqttClient`, `NanoMqClient`, `AmqpClient`, `KafkaClient`) — v2.1
+- [x] **RES-02**: Egress backpressure, bounded ring-buffer failover, and per-broker circuit breaker protection before DLQ drop — v2.1
+- [x] **RES-03**: Dynamic in-flight TLS certificate and credential hot-reload without worker process restart — v2.1
 
-### Future Considerations (v2.1 / v3.0 Candidates)
+### Future Considerations (v3.0 Candidates)
 
-- **RES-01**: Standardized offline subscription queuing and in-memory publish buffers across all adapters
 - **FLT-01**: Dynamic content-based filtering (JSONPath/CEL expressions) in topic routes
 - **INT-01**: Live multi-broker integration test suite running against Docker Compose stack
 - **ADPT-01**: Additional protocol adapters (HTTP/Webhooks, gRPC, WebSocket)
@@ -44,13 +46,14 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 
 - Messaging protocol diversity: IoT devices produce MQTT, enterprise queueing uses RabbitMQ, and analytics backbones consume Kafka.
 - Horizontal scaling: Multiple Data Plane workers run against edge brokers using native features (MQTT 5 shared subscriptions, Kafka consumer groups, AMQP shared queues) to prevent message duplication.
-- Shipped v1.1 with 43 unit tests passing in 0.5s hermetic execution.
+- Shipped v2.1 with 94 unit tests passing in 0.55s hermetic execution.
 
 ## Constraints
 
 - Runtime: Python 3.12+
-- Dependencies: `paho-mqtt`, `pika`, `confluent-kafka`, `redis`, `prometheus-client`
+- Dependencies: `paho-mqtt`, `pika`, `confluent-kafka`, `redis`, `prometheus-client`, `fastavro`, `protobuf`
 - Hermetic testability: Unit tests must execute cleanly without external network broker dependencies via mocking.
 
 ---
-*Last updated: 2026-10-07 after v1.1 milestone*
+*Last updated: 2026-10-18 after v2.1 milestone completion*
+

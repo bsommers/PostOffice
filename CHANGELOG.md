@@ -4,6 +4,22 @@ All notable changes to the PostOffice project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-18
+
+### Added
+- **Standardized Client Queuing & Offline Replay (`RES-01`):**
+  - Thread-safe subscription registry (`record_subscription`, `get_subscriptions`) in `BaseClient` preserving broker-specific subscription options (`qos`, `exchange`, `exchange_type`, `queue`, `auto_ack`) across pre-connect registration and reconnect replay across `MqttClient`, `NanoMqClient`, `AmqpClient`, and `KafkaClient`.
+  - Bounded thread-safe in-flight publish buffer (`BufferedPublish`, `BufferOverflowError`, `enable_publish_buffer`, `max_publish_buffer_size`, `buffer_overflow_policy`) supporting `"reject"` and `"drop_oldest"` policies with FIFO flush on broker connection.
+- **Egress Circuit Breakers & Ring-Buffer Failover (`RES-02`):**
+  - Per-broker egress `CircuitBreaker` (`CLOSED`, `OPEN`, `HALF_OPEN`) in `postoffice.resiliency` with configurable `failure_threshold` and `recovery_timeout`.
+  - Automatic ring-buffer failover before Dead Letter Queue (DLQ) drop when a target broker's circuit breaker is `OPEN`, and automatic buffer flush upon `HALF_OPEN -> CLOSED` probe recovery.
+  - Facade configuration via `PostOffice.configure_circuit_breaker()` and `add_broker(..., circuit_breaker_threshold=..., circuit_breaker_timeout=...)`.
+- **Dynamic In-Flight TLS & Credential Hot-Reload (`RES-03`):**
+  - Zero-downtime `reload_security()` across `MqttClient`, `NanoMqClient`, `AmqpClient`, and `KafkaClient` preserving active subscriptions and buffered publishes.
+  - Programmatic reload via `PostOffice.reload_broker_security()` and cluster-wide live broadcast via `ControlPlane.update_broker_security()` and `DataPlane` Pub/Sub listener.
+
+---
+
 ## [2.0.0] - 2026-10-13
 
 ### Added

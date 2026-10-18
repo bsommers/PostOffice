@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import format_dlq_payload
+from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
 from postoffice.schema import (
     BaseSchemaRegistry,
     InMemorySchemaRegistry,
@@ -104,6 +105,28 @@ class Router:
         # Global default Dead Letter Queue target
         self.default_dlq_broker: Optional[str] = None
         self.default_dlq_topic: Optional[str] = None
+        # Per-broker egress circuit breakers
+        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+
+    def configure_circuit_breaker(
+        self,
+        broker_name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 30.0,
+        time_fn: Callable[[], float] = time.monotonic,
+    ) -> CircuitBreaker:
+        """Configures an egress circuit breaker for a target broker."""
+        cb = CircuitBreaker(
+            failure_threshold=failure_threshold,
+            recovery_timeout=recovery_timeout,
+            time_fn=time_fn,
+        )
+        self.circuit_breakers[broker_name] = cb
+        logger.info(
+            f"Configured circuit breaker for '{broker_name}' "
+            f"(threshold={failure_threshold}, timeout={recovery_timeout}s)"
+        )
+        return cb
 
     def set_dlq(self, broker_name: str, topic: str) -> None:
         """Sets the global default Dead Letter Queue destination broker and topic."""
@@ -341,17 +364,91 @@ class Router:
                 publish_kwargs["on_error"] = coordinator.on_error
 
             if target_client in self.clients:
+                target_obj = self.clients[target_client]
+                breaker = self.circuit_breakers.get(target_client)
+
+                if breaker is not None and not breaker.allow_request():
+                    self.metrics.record_error(source_client, "circuit_open")
+                    # Attempt ring-buffer failover before dropping to DLQ
+                    if hasattr(target_obj, "buffer_publish") and target_obj.buffer_publish(
+                        target_topic,
+                        out_message,
+                        **publish_kwargs
+                    ):
+                        logger.warning(
+                            f"Circuit breaker OPEN for {target_client}; buffered message to {target_topic} in publish buffer."
+                        )
+                        continue
+
+                    exc = CircuitBreakerOpenError(f"Circuit breaker is OPEN for target broker '{target_client}'")
+                    self.metrics.record_routed(source_client, target_client, status="error")
+                    if coordinator:
+                        coordinator.on_error(exc)
+                    else:
+                        self._route_to_dlq(
+                            source_client,
+                            source_topic,
+                            message,
+                            error=str(exc),
+                            dlq_broker=route_config.get("dlq_broker"),
+                            dlq_topic=route_config.get("dlq_topic")
+                        )
+                    continue
+
+                orig_confirm = publish_kwargs.get("on_confirm")
+                orig_error = publish_kwargs.get("on_error")
+                error_recorded = [False]
+
+                if breaker is not None:
+                    def _wrapped_confirm(
+                        _b=breaker, _t=target_obj, _oc=orig_confirm
+                    ):
+                        recovered = _b.record_success()
+                        if _oc:
+                            _oc()
+                        if recovered and hasattr(_t, "flush_publish_buffer"):
+                            _t.flush_publish_buffer()
+
+                    def _wrapped_error(
+                        err: Exception,
+                        _b=breaker,
+                        _oe=orig_error,
+                        _er=error_recorded,
+                        _rc=route_config
+                    ):
+                        _er[0] = True
+                        _b.record_failure()
+                        if _oe:
+                            _oe(err)
+                        else:
+                            self._route_to_dlq(
+                                source_client,
+                                source_topic,
+                                message,
+                                error=str(err),
+                                dlq_broker=_rc.get("dlq_broker"),
+                                dlq_topic=_rc.get("dlq_topic")
+                            )
+
+                    publish_kwargs["on_confirm"] = _wrapped_confirm
+                    publish_kwargs["on_error"] = _wrapped_error
+
                 logger.info(f"Routing to {target_client} on {target_topic} args: {publish_kwargs}")
                 try:
-                    self.clients[target_client].publish(target_topic, out_message, **publish_kwargs)
-                    self.metrics.record_routed(source_client, target_client, status="success")
+                    target_obj.publish(target_topic, out_message, **publish_kwargs)
+                    if not error_recorded[0]:
+                        self.metrics.record_routed(source_client, target_client, status="success")
+                    else:
+                        self.metrics.record_routed(source_client, target_client, status="error")
                 except Exception as e:
                     logger.error(f"Error publishing to {target_client}: {e}")
                     self.metrics.record_routed(source_client, target_client, status="error")
                     self.metrics.record_error(source_client, "publish_failure")
+                    if breaker is not None and not error_recorded[0]:
+                        breaker.record_failure()
                     if coordinator:
                         coordinator.on_error(e)
-                    else:
+                    elif not error_recorded[0]:
                         self._route_to_dlq(
                             source_client,
                             source_topic,

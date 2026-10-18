@@ -35,6 +35,24 @@ class ControlPlane:
         self.r.hset("postoffice:brokers", name, json.dumps(config))
         self._publish_update("add_broker", {"name": name, **config})
 
+    def update_broker_security(self, name: str, security_config: dict | object):
+        """Hot-reload a broker's security configuration in Redis and broadcast to active DataPlanes."""
+        if hasattr(security_config, "to_dict") and callable(security_config.to_dict):
+            sec_dict = security_config.to_dict()
+        else:
+            sec_dict = dict(security_config)
+
+        existing_raw = self.r.hget("postoffice:brokers", name)
+        if existing_raw:
+            config = json.loads(existing_raw)
+            config.setdefault("kwargs", {})["security_config"] = sec_dict
+            self.r.hset("postoffice:brokers", name, json.dumps(config))
+
+        self._publish_update(
+            "update_broker_security",
+            {"name": name, "security_config": sec_dict}
+        )
+
     def add_route(self, source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs):
         """Save a new routing rule and alert the cluster."""
         route_id = f"{source_broker}:{source_topic}->{target_broker}:{target_topic}"

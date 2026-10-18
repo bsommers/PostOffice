@@ -73,6 +73,8 @@ class DataPlane:
                     )
                 elif action == "add_subscription":
                     self.po.subscribe(data["broker_name"], data["topic"], **data["kwargs"])
+                elif action == "update_broker_security":
+                    self.po.reload_broker_security(data["name"], data["security_config"])
                 elif action == "clear_state":
                     logger.warning("Control plane issued clear_state. Tearing down existing brokers and routes...")
                     self.po.reset()

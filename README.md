@@ -10,7 +10,8 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
 - **$O(k)$ TopicTrie Routing:** High-performance hierarchical topic matching with `+` (single-level) and `#` (multi-level) wildcards, scaling over 648x faster than linear scans.
 - **End-to-End Delivery Guarantees:** Asynchronous publisher confirmation coordination (`_FanoutCoordinator`) and automatic semantic translation (MQTT QoS ↔ AMQP persistent delivery mode).
 - **Dynamic Schema Registry & Transformation:** Runtime bidirectional payload conversion between JSON, Apache Avro (`fastavro`), and Protocol Buffers (`protobuf`) with Confluent 5-byte wire format support.
-- **Production Security & Authentication:** TLS/mTLS encryption, strict certificate verification, and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512) across all adapters.
+- **Production Security & Hot-Reload:** TLS/mTLS encryption, strict certificate verification, SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512), and zero-downtime in-flight credential/certificate rotation (`reload_broker_security`) across all adapters.
+- **Operational Resiliency & Backpressure:** Standardized offline subscription replay, thread-safe bounded publish buffers (`reject` / `drop_oldest`), and per-broker egress circuit breakers (`CircuitBreaker`) with ring-buffer failover before DLQ drop.
 - **Observability & Dead Letter Queues:** Built-in Prometheus metrics exporter (`/metrics` HTTP server) and Dead Letter Queue (DLQ) forensic envelopes with poison-pill isolation and anti-recursion protection.
 - **Distributed Architecture:** Redis-synchronized Control Plane and horizontally scalable Data Plane workers.
 

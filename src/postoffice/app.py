@@ -55,12 +55,38 @@ class PostOffice:
         """Sets or updates the HTTP port used to expose Prometheus metrics."""
         self.metrics_port = port
 
+    def reload_broker_security(
+        self,
+        name: str,
+        security_config: Union[SecurityConfig, Dict[str, Any]],
+    ) -> None:
+        """Hot-reloads TLS certificates and credentials for an existing broker in-flight."""
+        if name not in self.brokers:
+            raise ValueError(f"Broker '{name}' not found.")
+        self.brokers[name].reload_security(security_config)
+
+    def configure_circuit_breaker(
+        self,
+        broker_name: str,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 30.0,
+    ):
+        """Configures an egress circuit breaker for a registered broker."""
+        if broker_name not in self.brokers:
+            raise ValueError(f"Broker '{broker_name}' not found.")
+        return self.router.configure_circuit_breaker(
+            broker_name,
+            failure_threshold=failure_threshold,
+            recovery_timeout=recovery_timeout,
+        )
 
     def add_broker(
         self,
         name: str,
         protocol: str,
         security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
+        circuit_breaker_threshold: Optional[int] = None,
+        circuit_breaker_timeout: float = 30.0,
         **kwargs
     ) -> None:
         """
@@ -69,6 +95,8 @@ class PostOffice:
         :param name: Unique internal identifier for the broker (e.g. 'mqtt_1')
         :param protocol: The protocol type ('mqtt', 'amqp', 'kafka', 'nanomq')
         :param security_config: Optional TLS/mTLS and authentication settings (SecurityConfig or dict)
+        :param circuit_breaker_threshold: Optional consecutive failure threshold to trip egress circuit breaker
+        :param circuit_breaker_timeout: Seconds before an OPEN circuit breaker transitions to HALF_OPEN
         :param kwargs: Broker specific connection params (e.g. host, port, bootstrap_servers, user)
         """
         if name in self.brokers:
@@ -81,6 +109,13 @@ class PostOffice:
         client = ClientRegistry.create_client(protocol, name, self.router, **kwargs)
         self.router.register_client(client)
         self.brokers[name] = client
+
+        if circuit_breaker_threshold is not None:
+            self.router.configure_circuit_breaker(
+                name,
+                failure_threshold=circuit_breaker_threshold,
+                recovery_timeout=circuit_breaker_timeout,
+            )
 
         # If the PostOffice has already started, immediately connect newly injected brokers
         if self.is_running:

@@ -4,6 +4,24 @@ This document tracks all completed and active milestone releases of PostOffice.
 
 ---
 
+## [v2.1] Operational Resiliency & In-Flight Queuing
+
+**Completed:** 2026-10-18
+**Phases:** 2 (Phases 7–8)
+**Plans:** 4 total (07-01, 07-02, 08-01, 08-02)
+**Unit Tests:** 94 tests passing hermetically in 0.545s
+**Audit Report:** `.planning/v2.1-MILESTONE-AUDIT.md` (Passed)
+
+### Delivered
+Production resiliency layer providing standardized offline subscription queuing, thread-safe bounded publish buffers, per-broker egress circuit breakers with ring-buffer failover before DLQ drop, and zero-downtime TLS/SASL credential hot-reloading across all protocol adapters and distributed DataPlane workers.
+
+### Key Accomplishments
+1. **Standardized Client Queuing & Replay (`RES-01`):** Thread-safe `_subscriptions` registry and bounded `deque` `_publish_buffer` (`reject` and `drop_oldest` policies) across `BaseClient`, `MqttClient`, `NanoMqClient`, `AmqpClient`, and `KafkaClient`.
+2. **Egress Circuit Breakers & Ring-Buffer Failover (`RES-02`):** Per-broker `CircuitBreaker` (`CLOSED -> OPEN -> HALF_OPEN -> CLOSED`) absorbing messages into the target's publish buffer while `OPEN` and automatically flushing on `HALF_OPEN -> CLOSED` probe recovery.
+3. **In-Flight TLS & Credential Hot-Reload (`RES-03`):** `reload_security()` across all 4 broker adapters and `ControlPlane.update_broker_security()` / `DataPlane` live Pub/Sub broadcast rotating TLS certificates and SASL/broker credentials without process restart.
+
+---
+
 ## [v2.0] Schema Transformation & Production Security
 
 **Shipped:** 2026-10-13

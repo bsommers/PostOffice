@@ -22,7 +22,7 @@ class AmqpClient(BaseClient):
         security_config: Optional[Union[SecurityConfig, Dict[str, Any]]] = None,
         **kwargs
     ):
-        super().__init__(name, router)
+        super().__init__(name, router, **kwargs)
         self.host = host
         self.security = ensure_security_config(security_config)
         self.user = self.security.username if self.security.username is not None else (user if user is not None else "user")
@@ -58,34 +58,60 @@ class AmqpClient(BaseClient):
         if self.thread:
             self.thread.join(timeout=2)
 
-    def subscribe(self, topic: str, **kwargs):
-        if not self.channel:
-            logger.error(f"{self.name}: Cannot subscribe to {topic}, channel is not open.")
-            return
+    def reload_security(self, security_config: Optional[Union[SecurityConfig, Dict[str, Any]]]) -> None:
+        was_active = bool(self.connection and self.connection.is_open) or bool(
+            self.thread and self.thread.is_alive()
+        )
+        if was_active:
+            self.disconnect()
 
+        self.security = ensure_security_config(security_config)
+        if self.security.username is not None:
+            self.user = self.security.username
+        if self.security.password is not None:
+            self.password = self.security.password
+
+        if self.port == 5672 and self.security.tls_enabled:
+            self.port = 5671
+        elif self.port == 5671 and not self.security.tls_enabled:
+            self.port = 5672
+
+        logger.info(f"{self.name}: Reloaded AMQP security configuration (tls_enabled={self.security.tls_enabled})")
+        if was_active:
+            self._stop_event.clear()
+            self._connected_event.clear()
+            self.connect()
+
+    def _apply_subscription(self, topic: str, kwargs: Dict[str, Any]):
         exchange = kwargs.get('exchange', '')
         exchange_type = kwargs.get('exchange_type', 'direct')
         queue = kwargs.get('queue', topic)
         auto_ack = kwargs.get('auto_ack', True)
 
-        def _subscribe():
-            if exchange:
-                self.channel.exchange_declare(exchange=exchange, exchange_type=exchange_type)
+        if exchange:
+            self.channel.exchange_declare(exchange=exchange, exchange_type=exchange_type)
 
-            result = self.channel.queue_declare(queue=queue, exclusive=kwargs.get('exclusive', False))
-            queue_name = result.method.queue
+        result = self.channel.queue_declare(queue=queue, exclusive=kwargs.get('exclusive', False))
+        queue_name = result.method.queue
 
-            if exchange:
-                self.channel.queue_bind(exchange=exchange, queue=queue_name, routing_key=topic)
+        if exchange:
+            self.channel.queue_bind(exchange=exchange, queue=queue_name, routing_key=topic)
 
-            self.channel.basic_consume(
-                queue=queue_name,
-                on_message_callback=lambda ch, method, properties, body: self._on_message(ch, method, properties, body, auto_ack=auto_ack),
-                auto_ack=auto_ack
-            )
-            logger.info(f"{self.name} subscribed to topic/routing_key {topic} on queue {queue_name} (exchange: {exchange})")
+        self.channel.basic_consume(
+            queue=queue_name,
+            on_message_callback=lambda ch, method, properties, body: self._on_message(ch, method, properties, body, auto_ack=auto_ack),
+            auto_ack=auto_ack
+        )
+        logger.info(f"{self.name} subscribed to topic/routing_key {topic} on queue {queue_name} (exchange: {exchange})")
 
-        self.connection.add_callback_threadsafe(_subscribe)
+    def subscribe(self, topic: str, **kwargs):
+        self.record_subscription(topic, **kwargs)
+        if not self.channel or not self.connection:
+            logger.warning(f"{self.name}: Channel not open. Topic {topic} queued for subscription on connect.")
+            return
+
+        sub_kwargs = dict(kwargs)
+        self.connection.add_callback_threadsafe(lambda: self._apply_subscription(topic, sub_kwargs))
 
     def _on_message(self, ch, method, properties, body, auto_ack: bool = True):
         ack_fn = None
@@ -128,6 +154,9 @@ class AmqpClient(BaseClient):
         **kwargs
     ):
         if not self.channel:
+            if self.buffer_publish(topic, message, on_confirm=on_confirm, on_error=on_error, **kwargs):
+                logger.info(f"{self.name}: Channel not open. Message to {topic} buffered for publish on connect.")
+                return
             logger.error(f"{self.name}: Cannot publish to {topic}, channel is not open.")
             if on_error:
                 on_error(RuntimeError(f"{self.name}: Channel is not open."))
@@ -186,6 +215,11 @@ class AmqpClient(BaseClient):
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
             logger.info(f"{self.name} connected to AMQP broker at {self.host}:{self.port}")
+
+            for topic, sub_kwargs in self.get_subscriptions().items():
+                self._apply_subscription(topic, sub_kwargs)
+            self.flush_publish_buffer()
+
             self._connected_event.set()
         except pika.exceptions.AMQPConnectionError:
             logger.error(f"Failed to connect to AMQP broker at {self.host}:{self.port}")
@@ -198,3 +232,4 @@ class AmqpClient(BaseClient):
             except Exception as e:
                 logger.error(f"AMQP consume loop error: {e}")
                 break
+
