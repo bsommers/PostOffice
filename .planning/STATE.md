@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Milestone v2.1 complete (Phases 7–8 verified; 94/94 unit tests passing).
+**Current focus:** Milestone v2.1 complete + P0/P1 coverage audit remediated (106/106 unit tests passing; 90.0% combined branch+statement coverage gate enforced).
 
 ## Current Position
 
 Phase: 8 of 8 (Egress Backpressure, Circuit Breakers & Credential Hot-Reload) — Complete
 Plan: 2 of 2 in Phase 8 completed (08-01, 08-02)
-Status: Phase 8 verified (`08-VERIFICATION.md`); Milestone v2.1 complete (`v2.1-MILESTONE-AUDIT.md`)
-Last activity: 2026-10-18 — Phase 8 executed and verified (94/94 unit tests passing)
+Status: Phase 8 verified (`08-VERIFICATION.md`); Milestone v2.1 complete (`v2.1-MILESTONE-AUDIT.md`); Coverage gate (`>= 90%`) enforced in `.coveragerc` and documented in `docs/TEST_COVERAGE.md`; Session checkpoint saved to `.planning/CHECKPOINT.md`
+Last activity: 2026-10-18 — Closed P0/P1 coverage gaps and wired 90% coverage gate (106/106 unit tests passing)
 
 Progress: [██████████] 100%
 
