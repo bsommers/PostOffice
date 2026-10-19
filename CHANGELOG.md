@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dynamic In-Flight TLS & Credential Hot-Reload (`RES-03`):**
   - Zero-downtime `reload_security()` across `MqttClient`, `NanoMqClient`, `AmqpClient`, and `KafkaClient` preserving active subscriptions and buffered publishes.
   - Programmatic reload via `PostOffice.reload_broker_security()` and cluster-wide live broadcast via `ControlPlane.update_broker_security()` and `DataPlane` Pub/Sub listener.
+- **Test Coverage Gate & Audit (`TEST_COVERAGE.md`):**
+  - Expanded hermetic unit test suite to 106 tests across 15 suites (`tests/test_plugin_ingress_callbacks.py`), achieving 92.9% statement coverage (`1,392 / 1,498`), 99.3% function reachability (`138 / 139`), and enforcing a `>= 90%` combined branch + statement coverage threshold in `.coveragerc`.
 
 ---
 
