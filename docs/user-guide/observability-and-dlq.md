@@ -28,9 +28,10 @@ PostOffice embeds Prometheus instrumentation via `MetricsManager`, providing rea
 | Metric Name | Type | Labels | Description |
 |---|---|---|---|
 | `postoffice_messages_routed_total` | Counter | `source_broker`, `target_broker`, `status` | Total count of messages routed, labeled by delivery outcome (`"success"` or `"error"`). |
-| `postoffice_routing_errors_total` | Counter | `source_broker`, `error_type` | Total errors encountered, classified by type (`"unroutable"`, `"publish_failure"`, `"schema_validation_error"`, `"unregistered_target"`, `"dlq_recursion"`). |
+| `postoffice_routing_errors_total` | Counter | `source_broker`, `error_type` | Total errors encountered, classified by type (`"unroutable"`, `"publish_failure"`, `"circuit_breaker_open"`, `"schema_validation_error"`, `"unregistered_target"`, `"dlq_recursion"`). |
 | `postoffice_routing_duration_seconds` | Histogram | `source_broker` | Latency distribution of routing operations from ingress receipt to egress dispatch. |
 | `postoffice_dlq_messages_total` | Counter | `source_broker`, `dlq_broker`, `dlq_topic` | Total messages diverted into Dead Letter Queues. |
+| `postoffice_circuit_breaker_state` | Gauge | `target_broker` | Current state of per-broker egress circuit breaker (`0` = `CLOSED`, `1` = `OPEN`, `2` = `HALF_OPEN`). |
 
 ### Enabling the HTTP Scraping Endpoint
 

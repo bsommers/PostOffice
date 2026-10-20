@@ -14,6 +14,8 @@ Common issues, diagnostics, error messages, and their solutions when developing 
   - [`Invalid wire format magic byte: expected 0x00`](#invalid-magic-byte)
   - [`DLQ recursion detected: message originated from DLQ`](#dlq-recursion-detected)
   - [`Target client X not registered`](#target-client-not-registered)
+  - [`CircuitBreakerOpenError: Circuit breaker for broker 'X' is OPEN`](#circuit-breaker-open)
+  - [`BufferOverflowError: Publish buffer for client 'X' is full`](#publish-buffer-overflow)
   - [`Redis connection error in update listener: Retrying in 1.0s...`](#redis-connection-error)
 - [Frequently Asked Questions](#frequently-asked-questions)
 
@@ -64,6 +66,16 @@ Common issues, diagnostics, error messages, and their solutions when developing 
 - **Cause:** `add_route()` was called referencing a target broker name that was not registered with `add_broker()`.
 - **Solution:** Ensure `po.add_broker("kafka_main", ...)` is called before `add_route()`.
 
+### Circuit Breaker Open
+- **Symptom:** `CircuitBreakerOpenError: Circuit breaker for broker 'kafka_main' is OPEN` (and `postoffice_circuit_breaker_state{target_broker="kafka_main"} 1.0`).
+- **Cause:** Consecutive publish failures to `kafka_main` reached `failure_threshold`, tripping its egress circuit breaker to `OPEN`, and either `enable_publish_buffer=False` or the client's publish buffer reached capacity.
+- **Solution:** Enable in-flight buffering on the target broker (`enable_publish_buffer=True`, `max_publish_buffer_size=2000`, `buffer_overflow_policy="drop_oldest"`) so messages queue in memory during short outages and flush automatically when the `HALF_OPEN` probe succeeds.
+
+### Publish Buffer Overflow
+- **Symptom:** `BufferOverflowError: Publish buffer for client 'mqtt_edge' is full (max_size=1000)`.
+- **Cause:** The broker is disconnected (or its circuit breaker is `OPEN`), `enable_publish_buffer=True` with `buffer_overflow_policy="reject"`, and buffered messages exceeded `max_publish_buffer_size`.
+- **Solution:** Increase `max_publish_buffer_size` or switch to `buffer_overflow_policy="drop_oldest"` if retaining the freshest telemetry is preferred over rejecting new messages to DLQ.
+
 ### Redis Connection Error
 - **Symptom:** `Redis connection error in update listener: Connection refused. Retrying in 1.0s...`
 - **Cause:** Data Plane worker cannot reach Redis on `localhost:6379`.
@@ -74,10 +86,11 @@ Common issues, diagnostics, error messages, and their solutions when developing 
 ## Frequently Asked Questions
 
 ### Does PostOffice require Docker to run unit tests?
-**No.** All unit tests in the `tests/` directory hermetically mock external brokers and Redis offline. Tests execute in sub-second time without any external services running.
+**No.** All 106 unit tests in the `tests/` directory hermetically mock external brokers and Redis offline. Tests execute in ~0.4s without any external services running.
 
 ### How fast is the TopicTrie matching engine?
 The `TopicTrie` operates in $O(k)$ time relative to topic depth $k$ rather than route count $N$. At 10,000 registered routes, `TopicTrie` lookups take ~26 microseconds (over 648x faster than linear scanning).
 
 ### How does PostOffice handle poison-pill messages?
 When an unroutable message or malformed payload arrives, PostOffice routes the original payload and error forensic details into a Dead Letter Queue. Once safely persisted in the DLQ, PostOffice issues an upstream acknowledgment (`ack_fn()`) to remove the poison pill from the ingress queue.
+

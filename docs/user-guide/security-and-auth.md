@@ -1,8 +1,8 @@
 # Production Security, TLS/mTLS & Authentication
 
-[← Back to User Guide](README.md)
+[← Back to User Guide](README.md) | [← Back to Project README](../../README.md)
 
-PostOffice provides an end-to-end security model securing data-in-transit across all protocol adapters (MQTT, AMQP, Apache Kafka, and NanoMQ edge brokers). The architecture features a unified configuration interface (`SecurityConfig`), strict certificate validation by default, mutual TLS (mTLS) authentication, and enterprise SASL support.
+PostOffice provides an end-to-end security model securing data-in-transit across all protocol adapters (MQTT, AMQP, Apache Kafka, and NanoMQ edge brokers). The architecture features a unified configuration interface (`SecurityConfig`), strict certificate validation by default, mutual TLS (mTLS) authentication, enterprise SASL support, and zero-downtime in-flight credential rotation (`RES-03`).
 
 ---
 
@@ -14,7 +14,7 @@ PostOffice provides an end-to-end security model securing data-in-transit across
   - [MQTT & NanoMQ (TLS & mTLS)](#mqtt--nanomq-tls--mtls)
   - [AMQP / RabbitMQ (TLS & PlainCredentials)](#amqp--rabbitmq-tls--plaincredentials)
   - [Apache Kafka (SSL & SASL SCRAM)](#apache-kafka-ssl--sasl-scram)
-- [Distributed Security Sync (ControlPlane & DataPlane)](#distributed-security-sync-controlplane--dataplane)
+- [Distributed Security Sync & Live Hot-Reload (`RES-03`)](#distributed-security-sync--live-hot-reload-res-03)
 - [Testing & Development (Skipping Verification)](#testing--development-skipping-verification)
 
 ---
@@ -133,7 +133,7 @@ po.add_broker("kafka_corp", "kafka", bootstrap_servers="kafka.corp.internal:9094
 
 ---
 
-## Distributed Security Sync (ControlPlane & DataPlane)
+## Distributed Security Sync & Live Hot-Reload (`RES-03`)
 
 In distributed architectures, security configurations are injected into the centralized `ControlPlane` and broadcasted to worker `DataPlane` nodes over Redis:
 
@@ -143,7 +143,7 @@ from postoffice.security import SecurityConfig
 
 cp = ControlPlane(redis_host="localhost", redis_port=6379)
 
-# Register secure broker
+# 1. Register secure broker initially
 cp.register_broker(
     name="secure_kafka",
     protocol="kafka",
@@ -152,13 +152,31 @@ cp.register_broker(
         tls_enabled=True,
         ca_cert="/etc/ssl/certs/ca.pem",
         username="worker_node",
-        password="worker_secret",
-        sasl_mechanism="SCRAM-SHA-256"
-    )
+        password="worker_secret_v1",
+        sasl_mechanism="SCRAM-SHA-256",
+    ),
+)
+
+# 2. Rotate TLS certificates or SASL passwords in-flight across all workers
+cp.update_broker_security(
+    name="secure_kafka",
+    security_config=SecurityConfig(
+        tls_enabled=True,
+        ca_cert="/etc/ssl/certs/ca-2027.pem",
+        username="worker_node",
+        password="worker_secret_v2",
+        sasl_mechanism="SCRAM-SHA-256",
+    ),
 )
 ```
 
-`ControlPlane` serializes `SecurityConfig` to a plain JSON dictionary stored in Redis hash `postoffice:brokers`. Any connected `DataPlane` worker receives the update message and reconstructs the secure broker client seamlessly.
+For standalone applications using the `PostOffice` facade directly, invoke `reload_broker_security()`:
+
+```python
+po.reload_broker_security("secure_kafka", rotated_security_config)
+```
+
+During hot-reload, each broker adapter (`MqttClient`, `NanoMqClient`, `AmqpClient`, `KafkaClient`) gracefully tears down its old transport session, rebuilds its TLS/SASL context, reconnects, replays all registered topic subscriptions (`_subscriptions`), and flushes any buffered outbound messages (`_publish_buffer`).
 
 ---
 

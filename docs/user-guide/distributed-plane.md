@@ -74,24 +74,37 @@ You can inject configuration programmatically using the `ControlPlane` Python AP
 
 ```python
 from postoffice.control_plane import ControlPlane
+from postoffice.security import SecurityConfig
 
 # Connect to Redis control cluster
-cp = ControlPlane(host="localhost", port=6379)
+cp = ControlPlane(redis_host="localhost", redis_port=6379)
 
 # 1. Register Brokers
-cp.add_broker("mqtt_edge", "mqtt", host="10.0.0.1", port=1883)
-cp.add_broker("kafka_main", "kafka", bootstrap_servers="10.0.0.2:9092")
+cp.register_broker("mqtt_edge", "mqtt", host="10.0.0.1", port=1883)
+cp.register_broker("kafka_main", "kafka", bootstrap_servers="10.0.0.2:9092")
 
-# 2. Add Routes
-cp.add_route(
+# 2. Register Routes
+cp.register_route(
     source_broker="mqtt_edge",
     source_topic="telemetry/+",
     target_broker="kafka_main",
-    target_topic="telemetry.raw"
+    target_topic="telemetry.raw",
 )
 
-# 3. Add Subscriptions
-cp.add_subscription("mqtt_edge", "telemetry/+")
+# 3. Register Subscriptions
+cp.register_subscription("mqtt_edge", "telemetry/+", qos=1)
+
+# 4. Hot-Reload Broker Security Credentials Live Across Workers
+cp.update_broker_security(
+    "kafka_main",
+    SecurityConfig(
+        tls_enabled=True,
+        ca_cert="/etc/ssl/certs/ca.pem",
+        username="rotated_user",
+        password="rotated_password",
+        sasl_mechanism="SCRAM-SHA-256",
+    ),
+)
 ```
 
 Every method call automatically writes the configuration to Redis and broadcasts an update message, causing all active Data Plane workers to reconfigure dynamically.

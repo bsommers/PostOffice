@@ -17,6 +17,7 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
   - [Topic Routing & Wildcards](routing-and-wildcards.md)
   - [Delivery Guarantees & Semantic Translation](delivery-guarantees.md)
   - [Dynamic Schema Registry & Serialization](schema-transformation.md)
+  - [Operational Resiliency, Queuing & Circuit Breakers](resiliency-and-circuit-breakers.md)
   - [Observability & Dead Letter Queues](observability-and-dlq.md)
   - [Distributed Control Plane & Data Plane](distributed-plane.md)
   - [Production Security, TLS/mTLS & Authentication](security-and-auth.md)
@@ -24,7 +25,6 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
   - [`PostOffice` Facade](#postoffice-facade)
   - [Security Configuration (`SecurityConfig`)](#security-configuration-securityconfig)
   - [Route Parameters by Protocol](#route-parameters-by-protocol)
-  - [Schema Registry API](#schema-registry-api)
 - [Troubleshooting & FAQ](troubleshooting.md)
 
 ---
@@ -41,7 +41,7 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/meso-ai/PostOffice.git
+   git clone https://github.com/bsommers/PostOffice.git
    cd PostOffice
    ```
 
@@ -59,10 +59,10 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
    pip install -r requirements.txt
    ```
 
-3. **Verify installation via hermetic test suite:**
-   All unit tests mock network clients offline and run in sub-second time without requiring Docker:
+3. **Verify installation via hermetic test suite & coverage gate:**
+   All 106 unit tests mock network clients offline and run in ~0.4s without requiring Docker:
    ```bash
-   PYTHONPATH=src .venv/bin/python -m unittest discover tests/
+   PYTHONPATH=src .venv/bin/coverage run -m unittest discover tests/ && .venv/bin/coverage report
    ```
 
 ---
@@ -119,14 +119,14 @@ PostOffice uses a strict three-tier architecture:
 ```
 +-------------------------------------------------------------------+
 |                        PostOffice Facade                         |
-|     add_broker()  |  add_route()  |  subscribe()  |  start()      |
+| add_broker() | add_route() | configure_circuit_breaker() | start()|
 +---------------------------------+---------------------------------+
                                   |
                                   v
 +---------------------------------+---------------------------------+
 |                       Router Engine Core                          |
-|  TopicTrie O(k)  |  _FanoutCoordinator  |  MetricsManager         |
-|  SchemaConverter |  Dead Letter Queue   |  Anti-Recursion         |
+|  TopicTrie O(k)  |  _FanoutCoordinator  |  CircuitBreaker         |
+|  SchemaConverter |  Dead Letter Queue   |  MetricsManager         |
 +---------------------------------+---------------------------------+
                                   |
         +-------------------------+-------------------------+
@@ -142,9 +142,10 @@ PostOffice uses a strict three-tier architecture:
 2. **Router Core (`src/postoffice/router.py`):**
    - **`TopicTrie`:** $O(k)$ topic prefix matching replacing linear $O(N)$ route scans.
    - **`_FanoutCoordinator`:** Atomic latch coordinating multi-target delivery confirmations.
+   - **`CircuitBreaker`:** Per-target state machine (`CLOSED`, `OPEN`, `HALF_OPEN`) with publish buffer failover before DLQ drop.
    - **`_translate_semantics`:** Maps MQTT QoS levels to AMQP persistence modes.
    - **`SchemaConverter`:** Translates between JSON, Avro, and Protobuf on the fly.
-3. **Pluggable Broker Clients (`src/postoffice/plugins/`):** Driver plugins implementing `BaseClient` interface for MQTT, AMQP, Kafka, and NanoMQ.
+3. **Pluggable Broker Clients (`src/postoffice/plugins/`):** Driver plugins implementing `BaseClient` interface (with thread-safe subscription registries, bounded publish buffers, and live `reload_security()`) for MQTT, AMQP, Kafka, and NanoMQ.
 4. **Distributed Coordination:** Redis-backed `ControlPlane` and `DataPlane` workers for multi-node deployments.
 
 ---
@@ -156,9 +157,10 @@ Detailed walkthroughs and recipes for each major capability:
 - **[Topic Routing & Wildcards](routing-and-wildcards.md):** Learn how MQTT-style `+` and `#` wildcards work and how the $O(k)$ TopicTrie delivers 600x+ speedups.
 - **[Delivery Guarantees & Semantic Translation](delivery-guarantees.md):** Understand end-to-end acknowledgement propagation across MQTT QoS 1/2, AMQP publisher confirms, and Kafka offset commits.
 - **[Dynamic Schema Registry & Serialization](schema-transformation.md):** Register Avro and Protobuf schemas, convert payloads dynamically, and format Confluent wire headers.
+- **[Operational Resiliency, Queuing & Circuit Breakers](resiliency-and-circuit-breakers.md):** Configure offline subscription replay, bounded publish buffers (`reject` / `drop_oldest`), egress circuit breakers, and live credential hot-reload.
 - **[Observability & Dead Letter Queues](observability-and-dlq.md):** Configure Prometheus scraping, track routing histograms, and isolate poison pills via DLQ JSON envelopes.
 - **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub.
-- **[Production Security, TLS/mTLS & Authentication](security-and-auth.md):** Configure TLS socket encryption, client certificates (mTLS), and SASL authentication across all brokers.
+- **[Production Security, TLS/mTLS & Authentication](security-and-auth.md):** Configure TLS socket encryption, client certificates (mTLS), SASL authentication, and zero-downtime credential rotation across all brokers.
 
 ---
 
@@ -183,8 +185,32 @@ PostOffice(
 - `schema_registry`: Custom `BaseSchemaRegistry` instance. Defaults to `InMemorySchemaRegistry()`.
 
 #### Methods
-- `add_broker(name: str, protocol: str, security_config: Optional[Union[SecurityConfig, dict]] = None, **kwargs) -> None`
-  Registers a messaging broker with optional TLS/mTLS or SASL security settings. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+- `add_broker(name: str, protocol: str, security_config: Optional[Union[SecurityConfig, dict]] = None, circuit_breaker_threshold: Optional[int] = None, circuit_breaker_timeout: float = 30.0, **kwargs) -> None`
+  Registers a messaging broker with optional TLS/mTLS or SASL security settings, client publish buffer kwargs (`enable_publish_buffer`, `max_publish_buffer_size`, `buffer_overflow_policy`), and egress circuit breaker parameters. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+- `configure_circuit_breaker(broker_name: str, failure_threshold: int = 5, recovery_timeout: float = 30.0) -> CircuitBreaker`
+  Configures or updates an egress `CircuitBreaker` for a registered target broker.
+- `reload_broker_security(broker_name: str, security_config: Union[SecurityConfig, dict]) -> None`
+  Hot-reloads TLS/mTLS certificates or SASL credentials on a registered broker in-flight without losing subscriptions or buffered messages.
+- `add_route(source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None`
+  Configures a routing rule with optional protocol parameters and schema transformations.
+- `subscribe(broker_name: str, topic: str, **kwargs) -> None`
+  Subscribes a registered broker to a topic (preserving `kwargs` across reconnects).
+- `register_schema(name: str, definition: Any, schema_type: str = "AVRO") -> int`
+  Registers a schema and returns its unique integer Schema ID.
+- `get_schema(name: str) -> Optional[SchemaEntry]`
+  Retrieves a registered schema entry by name.
+- `get_schema_by_id(schema_id: int) -> Optional[SchemaEntry]`
+  Retrieves a registered schema entry by ID.
+- `set_dlq(broker_name: str, topic: str) -> None`
+  Updates the global default Dead Letter Queue destination.
+- `set_metrics_port(port: Optional[int]) -> None`
+  Updates the Prometheus metrics HTTP port.
+- `start() -> None`
+  Connects all brokers and starts the metrics server.
+- `stop() -> None`
+  Disconnects all brokers and shuts down the metrics server.
+- `reset() -> None`
+  Tears down all connections, routes, and brokers, resetting the instance to an unconfigured state while preserving registry configurations.
 
 ---
 
@@ -211,26 +237,6 @@ SecurityConfig(
 - `insecure_skip_verify`: Bypasses TLS hostname and certificate checks (development only).
 - `username` / `password`: Basic credentials for MQTT/AMQP or SASL authentication for Kafka.
 - `sasl_mechanism`: Kafka SASL mechanism (`"PLAIN"`, `"SCRAM-SHA-256"`, `"SCRAM-SHA-512"`). Automatically configures Kafka `security.protocol` to `SASL_SSL` or `SASL_PLAINTEXT`.
-- `add_route(source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None`
-  Configures a routing rule with optional protocol parameters and schema transformations.
-- `subscribe(broker_name: str, topic: str, **kwargs) -> None`
-  Subscribes a registered broker to a topic.
-- `register_schema(name: str, definition: Any, schema_type: str = "AVRO") -> int`
-  Registers a schema and returns its unique integer Schema ID.
-- `get_schema(name: str) -> Optional[SchemaEntry]`
-  Retrieves a registered schema entry by name.
-- `get_schema_by_id(schema_id: int) -> Optional[SchemaEntry]`
-  Retrieves a registered schema entry by ID.
-- `set_dlq(broker_name: str, topic: str) -> None`
-  Updates the global default Dead Letter Queue destination.
-- `set_metrics_port(port: Optional[int]) -> None`
-  Updates the Prometheus metrics HTTP port.
-- `start() -> None`
-  Connects all brokers and starts the metrics server.
-- `stop() -> None`
-  Disconnects all brokers and shuts down the metrics server.
-- `reset() -> None`
-  Tears down all connections, routes, and brokers, resetting the instance to an unconfigured state while preserving registry configurations.
 
 ---
 

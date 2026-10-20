@@ -1,14 +1,14 @@
 # Checkpoint — Milestone v2.1 Operational Resiliency & Test Coverage Gate — 2026-10-18
 
 **Status:** COMPLETE
-**Branch:** `main` @ `d1d0ff0` (tagged `v2.1.0` at `961967f` + coverage gate commit `d1d0ff0`)
+**Branch:** `main` (release `v2.1.0` tagged and pushed to `origin` + user guide sync)
 **Working Tree:** Clean
 
 ## 1. Goal & Context
-Deliver Milestone v2.1 (`RES-01` client subscription & publish queuing, `RES-02` egress circuit breakers & backpressure, `RES-03` live mTLS/SASL credential hot-reload), close all P0 and P1 test coverage gaps identified during the coverage audit, enforce a `>= 90%` combined statement + branch coverage gate via `.coveragerc`, and record the full audit in `docs/TEST_COVERAGE.md`.
+Deliver Milestone v2.1 (`RES-01` client subscription & publish queuing, `RES-02` egress circuit breakers & backpressure, `RES-03` live mTLS/SASL credential hot-reload), close all P0 and P1 test coverage gaps identified during the coverage audit, enforce a `>= 90%` combined statement + branch coverage gate via `.coveragerc`, record the full audit in `docs/TEST_COVERAGE.md`, and synchronize `docs/user-guide/`.
 
 ## 2. Done (With Evidence)
-- **Milestone v2.1 (Phases 7 & 8 — `961967f`, tag `v2.1.0`):**
+- **Milestone v2.1 (Phases 7 & 8 — tag `v2.1.0`):**
   - `RES-01` (`src/postoffice/base_client.py`, `src/postoffice/plugins/{mqtt,amqp,kafka,nanomq}_client.py`): Thread-safe `_subscriptions` registry preserving subscription `kwargs` (`qos`, `exchange`, `queue`) across reconnects and bounded `deque` `_publish_buffer` supporting `"reject"` (`BufferOverflowError`) and `"drop_oldest"` overflow policies (`tests/test_client_queuing.py` -> 16 passed).
   - `RES-02` (`src/postoffice/resiliency.py`, `src/postoffice/router.py`, `src/postoffice/metrics.py`): Per-broker `CircuitBreaker` (`CLOSED -> OPEN -> HALF_OPEN -> CLOSED`), automatic fallback into target publish ring buffer while `OPEN`, DLQ diversion on buffer overflow or disabled buffer, and buffered message flush on `HALF_OPEN -> CLOSED` probe recovery (`tests/test_circuit_breaker.py` -> 10 passed).
   - `RES-03` (`src/postoffice/plugins/*`, `src/postoffice/app.py`, `src/postoffice/control_plane.py`, `src/postoffice/data_plane.py`): Live `reload_security()` across all 4 broker adapters and `ControlPlane.update_broker_security()` -> Redis `postoffice:brokers` hash + `postoffice:config_updates` Pub/Sub synchronization without losing subscriptions or buffered publishes (`tests/test_hot_reload.py` -> 10 passed).
@@ -21,6 +21,8 @@ Deliver Milestone v2.1 (`RES-01` client subscription & publish queuing, `RES-02`
     - Function reachability: **`92.1% -> 99.3%`** (`138 / 139` functions; `100.0%` of concrete methods)
   - Verified gate command:
     `PYTHONPATH=src .venv/bin/coverage run -m unittest discover tests/ && .venv/bin/coverage report && .venv/bin/coverage erase` -> `Ran 106 tests in 1.014s — OK — TOTAL 90%`.
+- **User Guide Synchronization:**
+  - Created `docs/user-guide/resiliency-and-circuit-breakers.md` and synchronized `README.md` and `docs/user-guide/{README,security-and-auth,observability-and-dlq,distributed-plane,troubleshooting}.md`.
 
 ## 3. Failed / Blocked (With Root Cause)
 - None. All 8 phases (16 plans) across Milestones v1.0, v2.0, and v2.1 plus the P0/P1 coverage remediation are complete and verified.

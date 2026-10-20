@@ -55,18 +55,26 @@ Comprehensive documentation, tutorials, recipes, and API references are located 
 - 🔀 **[Topic Routing & Wildcards](docs/user-guide/routing-and-wildcards.md)** — MQTT `+` / `#` wildcards and $O(k)$ TopicTrie benchmarks.
 - 🛡️ **[Delivery Guarantees & Semantic Translation](docs/user-guide/delivery-guarantees.md)** — QoS 1/2 coordination and persistent delivery modes.
 - 🧬 **[Dynamic Schema Registry & Serialization](docs/user-guide/schema-transformation.md)** — JSON, Avro, Protobuf, and Confluent wire framing.
-- 🔒 **[Production Security, TLS/mTLS & Authentication](docs/user-guide/security-and-auth.md)** — TLS/mTLS, SASL, and unified `SecurityConfig` across brokers.
+- 🔒 **[Production Security, TLS/mTLS & Authentication](docs/user-guide/security-and-auth.md)** — TLS/mTLS, SASL, unified `SecurityConfig`, and live credential hot-reload.
+- 🛟 **[Operational Resiliency, Queuing & Circuit Breakers](docs/user-guide/resiliency-and-circuit-breakers.md)** — Offline subscription replay, bounded publish buffers, and egress circuit breakers.
 - 📊 **[Observability & Dead Letter Queues](docs/user-guide/observability-and-dlq.md)** — Prometheus metrics scraping and DLQ poison-pill quarantine.
 - 🌐 **[Distributed Control & Data Plane](docs/user-guide/distributed-plane.md)** — Multi-worker horizontal scaling via Redis Pub/Sub.
 - 🔧 **[Troubleshooting & FAQ](docs/user-guide/troubleshooting.md)** — Common error diagnostics, recovery steps, and solutions.
 - 🏛️ **[Architecture & Protocol Mapping](docs/ARCHITECTURE.md)** — Deep architectural overview and semantic translation tables.
+- 🧪 **[Test Suite & Coverage Report](docs/TEST_COVERAGE.md)** — Module coverage breakdown (`90.0%` combined branch + statement gate).
 
 ---
 
-## Running Tests
+## Running Tests & Coverage Gate
 
 Execute the hermetic unit test suite (no external broker services required):
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m unittest discover tests/
+```
+
+Run the coverage gate (enforces `>= 90%` combined statement + branch coverage via `.coveragerc`):
+
+```bash
+PYTHONPATH=src .venv/bin/coverage run -m unittest discover tests/ && .venv/bin/coverage report
 ```
