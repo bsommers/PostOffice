@@ -164,7 +164,9 @@ Implemented: `ingress/{rules,firewall}.py`, `ratelimit.KeyedLimiter`, `Router.se
 - [ ] Failing tests: payload over limit → REJECT without decoding; topic too long/deep/denied → REJECT; token bucket allows burst then denies, refills with fake clock; keyed limiter evicts LRU past `max_keys` (limiter memory is bounded); identity extraction from topic template; rule exceptions yield `on_rule_error` verdict; DROP acks, REJECT nacks with `requeue=False`; firewall runs before trie match (assert `client_tries` not consulted on reject); metrics counted.
 - [ ] Implement; commit `feat(ingress): firewall core with size, topic-shape and rate-limit rules`.
 
-### Task D4: SenderLedger (observe-first) then opt-in cool-down
+### Task D4: SenderLedger (observe-first) then opt-in cool-down (DONE)
+
+Implemented: `ingress/ledger.py` (`SenderLedger`: bounded LRU+TTL keys with `other` overflow row, window trend, `likely_cause`, opt-in `enforce` cool-down on D1 `ExponentialBackoff` with quiet-period decay), `Firewall(ledger=)` / `from_dict["ledger"]` (cooled senders DROPped before rules; `rule_error` never blamed on sender), unroutable events recorded by `Router`, `PostOffice.sender_report(top)`, metric `postoffice_sender_events_total{source_broker,category}`. Rising senders log one WARNING per window. Not yet done (moved to D8/D10): DLQ identical-error dedupe (`repeat_count`) and the metadata-only DLQ record for refused oversize; per-top-N sender labels on Prometheus (omitted for cardinality; use `sender_report`); AMQP `user_id`/Kafka key extraction into `MessageContext.sender` (field exists, plugins do not populate it yet).
 
 See 5.1. Tests: counters per category and sender; trend detection with a fake clock; LRU/TTL bounds with an `other` bucket; `sender_report(top=N)` shape; observe-only mode never changes a verdict; with `enforce=True` repeated violations start an exponentially growing cool-down.
 

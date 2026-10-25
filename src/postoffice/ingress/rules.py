@@ -18,13 +18,14 @@ class MessageContext:
     topic: str
     size: int
     payload: Optional[bytes] = None
+    sender: Optional[str] = None  # explicit identity (AMQP user_id, Kafka key) when known
 
 
 @dataclass(frozen=True)
 class Verdict:
     action: Action
     rule: Optional[str] = None
-    category: Optional[str] = None  # oversize | malformed | rate_exceeded | forbidden_topic | rule_error
+    category: Optional[str] = None  # oversize | malformed | rate_exceeded | forbidden_topic | cooled | rule_error
     reason: Optional[str] = None
 
 

@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, List, Optional, Union
 from postoffice.dlq import BudgetedDlq
 from postoffice.ingress import Firewall
 from postoffice.router import Router
@@ -68,6 +68,11 @@ class PostOffice:
         """Limits DLQ writes (max_message_bytes, msgs_per_sec, bytes_per_sec) per source broker."""
         self.dlq_budget = BudgetedDlq(**limits)
         self.router.set_dlq_budget(self.dlq_budget)
+
+    def sender_report(self, top: int = 10) -> List[Dict[str, Any]]:
+        """Noisiest senders seen by the ingress ledger (empty when no ledger is configured)."""
+        ledger = getattr(self.firewall, "ledger", None)
+        return ledger.sender_report(top) if ledger is not None else []
 
     def configure_ingress(self, config: Union[Firewall, Dict[str, Any], None]) -> None:
         """Installs the ingress firewall from a Firewall or a dict (same shape as a rules file); None disables."""

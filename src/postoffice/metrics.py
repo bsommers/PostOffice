@@ -52,6 +52,13 @@ class MetricsManager:
             registry=self.registry
         )
 
+        self.sender_events = Counter(
+            'postoffice_sender_events_total',
+            'Problem events attributed to senders, by category (per-sender detail: sender_report)',
+            ['source_broker', 'category'],
+            registry=self.registry
+        )
+
         self.dlq_refused = Counter(
             'postoffice_dlq_refused_total',
             'Total number of Dead Letter Queue writes refused by the DLQ budget',
@@ -62,6 +69,10 @@ class MetricsManager:
     def record_ingress(self, source_broker: str, rule: str, action: str) -> None:
         """Increments the ingress firewall counter."""
         self.ingress.labels(source_broker=source_broker, rule=rule, action=action).inc()
+
+    def record_sender_event(self, source_broker: str, category: str) -> None:
+        """Increments the sender_events counter; no sender label, to keep cardinality bounded."""
+        self.sender_events.labels(source_broker=source_broker, category=category).inc()
 
     def record_dlq_refused(self, source_broker: str, reason: str) -> None:
         """Increments the dlq_refused counter."""

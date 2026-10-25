@@ -263,6 +263,8 @@ class Router:
 
     def _apply_ingress_verdict(self, source_client, verdict, ack_fn, nack_fn, start_time) -> None:
         self.metrics.record_ingress(source_client, verdict.rule or "unknown", verdict.action.value)
+        if verdict.category and verdict.category != "rule_error":
+            self.metrics.record_sender_event(source_client, verdict.category)
         self.metrics.record_duration(source_client, time.perf_counter() - start_time)
         logger.debug(f"Ingress {verdict.action.value} from {source_client} by {verdict.rule}: {verdict.reason}")
         if verdict.action == Action.DROP:
@@ -308,6 +310,9 @@ class Router:
         if not matching_routes:
             logger.debug(f"No routes found for {source_client}/{source_topic}")
             self.metrics.record_error(source_client, "unroutable")
+            if self.firewall is not None:
+                self.firewall.note(MessageContext(source_client, source_topic, len(message)), "unroutable")
+                self.metrics.record_sender_event(source_client, "unroutable")
             self.metrics.record_duration(source_client, time.perf_counter() - start_time)
 
             policy = self._unroutable_overrides.get(source_client, self.unroutable_policy)
