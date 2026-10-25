@@ -59,6 +59,7 @@ Comprehensive documentation, tutorials, recipes, and API references are located 
 - 🛟 **[Operational Resiliency, Queuing & Circuit Breakers](docs/user-guide/resiliency-and-circuit-breakers.md)** — Offline subscription replay, bounded publish buffers, and egress circuit breakers.
 - 📊 **[Observability & Dead Letter Queues](docs/user-guide/observability-and-dlq.md)** — Prometheus metrics scraping and DLQ poison-pill quarantine.
 - 🌐 **[Distributed Control & Data Plane](docs/user-guide/distributed-plane.md)** — Multi-worker horizontal scaling via Redis Pub/Sub.
+- 💡 **[Use Cases & Purpose](docs/use-cases/README.md)** — How PostOffice helps in IIoT, IoT/edge, data systems, business transactions, business management and other industries, plus an honest fit-and-limits page.
 - 🔧 **[Troubleshooting & FAQ](docs/user-guide/troubleshooting.md)** — Common error diagnostics, recovery steps, and solutions.
 - 🏛️ **[Architecture & Protocol Mapping](docs/ARCHITECTURE.md)** — Deep architectural overview and semantic translation tables.
 - 🧪 **[Test Suite & Coverage Report](docs/TEST_COVERAGE.md)** — Module coverage breakdown (`90.0%` combined branch + statement gate).
