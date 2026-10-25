@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+from postoffice.ingress.content import ContentGuard
 from postoffice.ingress.ledger import SenderLedger
 from postoffice.ingress.rules import (
     ALLOW, Action, MaxPayloadBytes, MessageContext, RateLimit, Rule, TopicShape, Verdict,
@@ -13,6 +14,7 @@ RULE_TYPES = {
     "max_payload_bytes": MaxPayloadBytes,
     "topic_shape": TopicShape,
     "rate_limit": RateLimit,
+    "content_guard": ContentGuard,
 }
 
 

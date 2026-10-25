@@ -173,7 +173,9 @@ See 5.1. Tests: counters per category and sender; trend detection with a fake cl
 - [ ] Failing tests with fake clock: threshold crossing starts a cool-down; repeated crossing doubles it up to the cap; quiet period decays strikes; cooled key is DROPped before other rules run.
 - [ ] Implement on top of D1 + D3; commit `feat(ingress): escalating offender cool-down`.
 
-### Task D5: ContentGuard (application-aware)
+### Task D5: ContentGuard (application-aware) (DONE)
+
+Implemented: `ingress/content.py` (`ContentGuard`: per-topic-pattern, linear regex byte scan for depth/keys/array/string limits before `json.loads`, utf-8 and JSON validity, Avro/Protobuf via the router's `SchemaConverter` bound in `Router.set_firewall`, `required_fields`/`field_ranges`/`enums` with dotted paths). Structural -> `malformed`/`oversize`; schema and business rules -> `schema_mismatch`. Registered as rule type `content_guard`. Not done: JSON-schema validation of JSON payloads (registry holds only Avro/Protobuf); declared-length pre-checks for binary formats.
 
 **Files:** `ingress/content.py`; reuse `schema/converters.py`.
 - [ ] Failing tests: JSON nested beyond `max_depth` → REJECT with no `RecursionError`; too many keys / long array / long string; schema mismatch → REJECT; required field missing; field range/enum violation; topic→schema binding enforces per-pattern; invalid UTF-8; guard skipped for topics without a rule (cost is zero).

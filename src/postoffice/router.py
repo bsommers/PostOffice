@@ -159,6 +159,9 @@ class Router:
     def set_firewall(self, firewall) -> None:
         """Installs (or with None removes) the ingress firewall evaluated before routing."""
         self.firewall = firewall
+        for rule in getattr(firewall, "rules", []):
+            if hasattr(rule, "bind_converter"):
+                rule.bind_converter(self.converter)
 
     def set_dlq_budget(self, budget: BudgetedDlq) -> None:
         """Replaces the admission-control budget applied to DLQ writes."""
