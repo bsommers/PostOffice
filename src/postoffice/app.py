@@ -188,9 +188,11 @@ class PostOffice:
         logger.info("Resetting PostOffice state...")
         self.stop()
         self.brokers.clear()
-        self.router = Router(schema_registry=self.schema_registry)
+        # Keep the MetricsManager so counters and the scrape endpoint survive a reset.
+        self.router = Router(
+            metrics_manager=self.metrics_manager,
+            schema_registry=self.schema_registry,
+        )
         if self.dlq_broker and self.dlq_topic:
             self.router.set_dlq(self.dlq_broker, self.dlq_topic)
-        self.metrics_manager = self.router.metrics
         self.is_running = False
-

@@ -77,7 +77,11 @@ class DataPlane:
                     self.po.reload_broker_security(data["name"], data["security_config"])
                 elif action == "clear_state":
                     logger.warning("Control plane issued clear_state. Tearing down existing brokers and routes...")
+                    was_running = self.po.is_running
                     self.po.reset()
+                    if was_running:
+                        # reset() leaves the facade stopped; restart so brokers added next connect.
+                        self.po.start()
 
             except Exception as e:
                 logger.error(f"Error processing control plane update: {e}")

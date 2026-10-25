@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, field, fields
 from typing import Optional, Dict, Any, Union
 
 
@@ -12,10 +12,10 @@ class SecurityConfig:
     ca_cert: Optional[str] = None
     client_cert: Optional[str] = None
     client_key: Optional[str] = None
-    client_key_password: Optional[str] = None
+    client_key_password: Optional[str] = field(default=None, repr=False)
     insecure_skip_verify: bool = False
     username: Optional[str] = None
-    password: Optional[str] = None
+    password: Optional[str] = field(default=None, repr=False)
     sasl_mechanism: Optional[str] = None
 
     def __post_init__(self):

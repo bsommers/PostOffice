@@ -17,7 +17,8 @@ class ControlPlane:
     def _publish_update(self, action: str, data: dict):
         payload = json.dumps({"action": action, "data": data})
         self.r.publish(self.channel, payload)
-        logger.info(f"Published update: {payload}")
+        # Log only the action and entity name: payloads can carry credentials (security_config).
+        logger.info(f"Published update: {action} ({data.get('name') or data.get('broker_name') or data.get('source_broker') or '-'})")
 
     def _serialize_dict(self, data: dict) -> dict:
         result = {}

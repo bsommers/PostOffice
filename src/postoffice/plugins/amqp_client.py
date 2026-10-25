@@ -86,7 +86,8 @@ class AmqpClient(BaseClient):
         exchange = kwargs.get('exchange', '')
         exchange_type = kwargs.get('exchange_type', 'direct')
         queue = kwargs.get('queue', topic)
-        auto_ack = kwargs.get('auto_ack', True)
+        # Manual ack by default: the router acks only after downstream delivery is confirmed.
+        auto_ack = kwargs.get('auto_ack', False)
 
         if exchange:
             self.channel.exchange_declare(exchange=exchange, exchange_type=exchange_type)

@@ -22,7 +22,7 @@ class _FanoutCoordinator:
         expected_count: int,
         ack_fn: Optional[Callable[[], None]] = None,
         nack_fn: Optional[Callable[..., None]] = None,
-        dlq_fn: Optional[Callable[[Optional[Exception]], bool]] = None
+        dlq_fn: Optional[Callable[[Optional[Exception], Optional[Dict[str, Any]]], bool]] = None
     ):
         self.remaining = expected_count
         self.ack_fn = ack_fn
@@ -42,13 +42,14 @@ class _FanoutCoordinator:
             if self.remaining == 0 and self.ack_fn:
                 self.ack_fn()
 
-    def on_error(self, exc: Optional[Exception] = None):
+    def on_error(self, exc: Optional[Exception] = None, route: Optional[Dict[str, Any]] = None):
+        """Records a failed target publish. `route` is the failing route's config, used to pick its DLQ."""
         with self.lock:
             if not self.failed:
                 self.failed = True
                 if self.dlq_fn:
                     try:
-                        handled = self.dlq_fn(exc)
+                        handled = self.dlq_fn(exc, route)
                         if handled:
                             return
                     except Exception as e:
@@ -241,7 +242,7 @@ class Router:
         if nack_fn is None and "nack_fn" in source_kwargs:
             nack_fn = source_kwargs.pop("nack_fn")
 
-        logger.info(f"Received message from {source_client} on {source_topic}: {message}")
+        logger.debug(f"Received message from {source_client} on {source_topic} ({len(message)} bytes)")
 
         # Find all matching routes in O(k) time via TopicTrie
         client_trie = self.client_tries.get(source_client)
@@ -271,11 +272,11 @@ class Router:
                     ack_fn()
             return
 
-        def _handle_dlq_on_error(exc: Optional[Exception]) -> bool:
+        def _handle_dlq_on_error(exc: Optional[Exception], failed_route: Optional[Dict[str, Any]]) -> bool:
             err_msg = str(exc) if exc else "Publish failed"
-            # Use per-route DLQ if configured on the route, else fallback to global DLQ
-            route_dlq_broker = matching_routes[0].get("dlq_broker") if matching_routes else None
-            route_dlq_topic = matching_routes[0].get("dlq_topic") if matching_routes else None
+            # Use the failing route's DLQ if configured on it, else fallback to global DLQ
+            route_dlq_broker = failed_route.get("dlq_broker") if failed_route else None
+            route_dlq_topic = failed_route.get("dlq_topic") if failed_route else None
             return self._route_to_dlq(
                 source_client,
                 source_topic,
@@ -345,7 +346,7 @@ class Router:
                     self.metrics.record_error(source_client, "schema_validation_error")
                     self.metrics.record_routed(source_client, target_client, status="error")
                     if coordinator:
-                        coordinator.on_error(err)
+                        coordinator.on_error(err, route_config)
                     else:
                         self._route_to_dlq(
                             source_client,
@@ -361,7 +362,9 @@ class Router:
 
             if coordinator:
                 publish_kwargs["on_confirm"] = coordinator.on_confirm
-                publish_kwargs["on_error"] = coordinator.on_error
+                publish_kwargs["on_error"] = (
+                    lambda err, _c=coordinator, _rc=route_config: _c.on_error(err, _rc)
+                )
 
             if target_client in self.clients:
                 target_obj = self.clients[target_client]
@@ -383,7 +386,7 @@ class Router:
                     exc = CircuitBreakerOpenError(f"Circuit breaker is OPEN for target broker '{target_client}'")
                     self.metrics.record_routed(source_client, target_client, status="error")
                     if coordinator:
-                        coordinator.on_error(exc)
+                        coordinator.on_error(exc, route_config)
                     else:
                         self._route_to_dlq(
                             source_client,
@@ -433,7 +436,7 @@ class Router:
                     publish_kwargs["on_confirm"] = _wrapped_confirm
                     publish_kwargs["on_error"] = _wrapped_error
 
-                logger.info(f"Routing to {target_client} on {target_topic} args: {publish_kwargs}")
+                logger.debug(f"Routing to {target_client} on {target_topic} (publish args: {sorted(publish_kwargs)})")
                 try:
                     target_obj.publish(target_topic, out_message, **publish_kwargs)
                     if not error_recorded[0]:
@@ -447,7 +450,7 @@ class Router:
                     if breaker is not None and not error_recorded[0]:
                         breaker.record_failure()
                     if coordinator:
-                        coordinator.on_error(e)
+                        coordinator.on_error(e, route_config)
                     elif not error_recorded[0]:
                         self._route_to_dlq(
                             source_client,
@@ -462,7 +465,7 @@ class Router:
                 self.metrics.record_error(source_client, "unregistered_target")
                 exc = RuntimeError(f"Target client {target_client} not registered")
                 if coordinator:
-                    coordinator.on_error(exc)
+                    coordinator.on_error(exc, route_config)
                 else:
                     self._route_to_dlq(
                         source_client,
