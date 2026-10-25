@@ -181,7 +181,9 @@ Implemented: `ingress/content.py` (`ContentGuard`: per-topic-pattern, linear reg
 - [ ] Failing tests: JSON nested beyond `max_depth` → REJECT with no `RecursionError`; too many keys / long array / long string; schema mismatch → REJECT; required field missing; field range/enum violation; topic→schema binding enforces per-pattern; invalid UTF-8; guard skipped for topics without a rule (cost is zero).
 - [ ] Implement iterative bounded scan; commit `feat(ingress): application-aware content guard`.
 
-### Task D6: Back-pressure and concurrency limit
+### Task D6: Back-pressure and concurrency limit (DONE)
+
+Implemented: `ingress/concurrency.py` (`InflightLimiter`: cap, `low_water` hysteresis, idempotent leases, `lease_timeout` reclaim of lost confirmations), `Router.set_inflight_limit/inflight` (slot held until ack/nack; no-callback sources like MQTT hold it only inside `route()` and are shed at the cap; over-cap messages with a nack are requeued and counted as `inflight_limit`), `BaseClient.pause_consumption/resume_consumption/set_inflight_limit` (no-op defaults), AMQP `basic_qos` prefetch (also applied on reconnect), Kafka pause/resume applied on the consume thread each cycle (survives rebalance), `PostOffice.set_inflight_limit` and `configure_ingress({'inflight': {broker: {...}}})`, re-applied on `reset()`. Known gap: Kafka passes no `nack_fn`, so a failed message holds its slot until `lease_timeout`; a Gauge for in-flight depth is left to D8.
 
 **Files:** `ingress/concurrency.py`, `plugins/amqp_client.py` (`prefetch_count`), `plugins/kafka_client.py` (`pause`/`resume`), `base_client.py` (`pause_consumption`/`resume_consumption` hooks, default no-op).
 - [ ] Failing tests: at `max_inflight` AMQP prefetch is set and further deliveries are not acked until capacity frees; Kafka `pause` called at the cap and `resume` below a low-water mark; MQTT degrades to DROP; counter decrements on confirm and on error (no leak).

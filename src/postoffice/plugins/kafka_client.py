@@ -28,6 +28,8 @@ class KafkaClient(BaseClient):
         self.subscribed_topics = []
         self._subscribe_lock = threading.Lock()
         self._pending_subscriptions = []
+        self._paused = threading.Event()
+        self._pause_applied = False
 
     def _build_kafka_config(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         conf: Dict[str, Any] = {'bootstrap.servers': self.bootstrap_servers}
@@ -108,6 +110,24 @@ class KafkaClient(BaseClient):
                 self.subscribed_topics = []
             self.connect()
 
+    def pause_consumption(self) -> None:
+        self._paused.set()
+
+    def resume_consumption(self) -> None:
+        self._paused.clear()
+
+    def _apply_pause_state(self) -> None:
+        """Runs on the consume thread: keeps polling (to stay in the group) with partitions paused."""
+        try:
+            if self._paused.is_set():
+                # Re-applied every cycle so a rebalance cannot silently un-pause new partitions.
+                self.consumer.pause(self.consumer.assignment())
+            elif self._pause_applied:
+                self.consumer.resume(self.consumer.assignment())
+            self._pause_applied = self._paused.is_set()
+        except Exception as e:
+            logger.error(f"{self.name}: Error applying pause state: {e}")
+
     def subscribe(self, topic: str, **kwargs):
         self.record_subscription(topic, **kwargs)
         if not self.consumer:
@@ -173,6 +193,7 @@ class KafkaClient(BaseClient):
                     logger.info(f"{self.name} applied subscriptions: {self._pending_subscriptions}")
                     self._pending_subscriptions = []
 
+            self._apply_pause_state()
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue

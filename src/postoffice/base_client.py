@@ -165,6 +165,18 @@ class BaseClient(ABC):
         """Hot-reloads TLS certificates and authentication credentials without losing subscriptions or buffered publishes."""
         pass
 
+    def pause_consumption(self) -> None:
+        """Back-pressure hook: stop pulling new messages from the broker. Default: not supported."""
+        pass
+
+    def resume_consumption(self) -> None:
+        """Back-pressure hook: resume pulling messages after pause_consumption."""
+        pass
+
+    def set_inflight_limit(self, max_inflight: Optional[int]) -> None:
+        """Hook to push the router's in-flight cap to the broker natively (e.g. AMQP prefetch)."""
+        pass
+
     def on_message(
         self,
         topic: str,

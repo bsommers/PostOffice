@@ -40,6 +40,7 @@ class AmqpClient(BaseClient):
         self.thread = None
         self._stop_event = threading.Event()
         self._connected_event = threading.Event()
+        self._prefetch: Optional[int] = None
 
     def connect(self):
         self.thread = threading.Thread(target=self._consume_loop)
@@ -81,6 +82,16 @@ class AmqpClient(BaseClient):
             self._stop_event.clear()
             self._connected_event.clear()
             self.connect()
+
+    def set_inflight_limit(self, max_inflight: Optional[int]) -> None:
+        """Bounds unacked deliveries with the broker's own prefetch window (0 = unlimited)."""
+        self._prefetch = max_inflight
+        if self.channel and self.connection and self.connection.is_open:
+            self.connection.add_callback_threadsafe(self._apply_prefetch)
+
+    def _apply_prefetch(self) -> None:
+        if self.channel is not None:
+            self.channel.basic_qos(prefetch_count=self._prefetch or 0)
 
     def _apply_subscription(self, topic: str, kwargs: Dict[str, Any]):
         exchange = kwargs.get('exchange', '')
@@ -215,6 +226,8 @@ class AmqpClient(BaseClient):
             )
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
+            if self._prefetch is not None:
+                self._apply_prefetch()
             logger.info(f"{self.name} connected to AMQP broker at {self.host}:{self.port}")
 
             for topic, sub_kwargs in self.get_subscriptions().items():

@@ -3,7 +3,7 @@ import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
-from postoffice.ingress import Action, Firewall, MessageContext
+from postoffice.ingress import Action, Firewall, InflightLimiter, MessageContext
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import BudgetedDlq, format_dlq_payload
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
@@ -116,6 +116,8 @@ class Router:
         self.dlq_budget = BudgetedDlq()
         # Ingress firewall evaluated before routing (None = disabled)
         self.firewall: Optional[Firewall] = None
+        # Per-source in-flight caps with protocol-native back-pressure
+        self._inflight: Dict[str, InflightLimiter] = {}
         # Per-broker egress circuit breakers
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
 
@@ -226,6 +228,46 @@ class Router:
 
     def register_client(self, client: Any):
         self.clients[client.name] = client
+        limiter = self._inflight.get(client.name)
+        if limiter is not None:
+            self._call_client(client.name, "set_inflight_limit", limiter.max_inflight)
+
+    def _call_client(self, broker: str, hook: str, *args) -> None:
+        method = getattr(self.clients.get(broker), hook, None)
+        if method is not None:
+            method(*args)
+
+    def set_inflight_limit(
+        self,
+        broker: str,
+        max_inflight: Optional[int],
+        low_water: Optional[int] = None,
+        lease_timeout: float = 60.0,
+    ) -> None:
+        """
+        Caps un-confirmed messages from ``broker`` (None removes the cap). At the cap the client is
+        paused (AMQP prefetch / Kafka pause) and resumed once in-flight falls to ``low_water``;
+        sources that cannot be paused shed the excess.
+        """
+        previous = self._inflight.pop(broker, None)
+        if max_inflight is None:
+            if previous is not None:
+                self._call_client(broker, "set_inflight_limit", None)
+                if previous.paused:
+                    self._call_client(broker, "resume_consumption")
+            return
+        self._inflight[broker] = InflightLimiter(
+            max_inflight,
+            low_water=low_water,
+            lease_timeout=lease_timeout,
+            on_saturate=lambda: self._call_client(broker, "pause_consumption"),
+            on_drain=lambda: self._call_client(broker, "resume_consumption"),
+        )
+        self._call_client(broker, "set_inflight_limit", max_inflight)
+
+    def inflight(self, broker: str) -> int:
+        limiter = self._inflight.get(broker)
+        return limiter.inflight if limiter is not None else 0
         logger.info(f"Registered client: {client.name}")
 
     def _topic_match(self, route_topic: str, message_topic: str) -> bool:
@@ -280,6 +322,64 @@ class Router:
                 nack_fn()
 
     def route(
+        self,
+        source_client: str,
+        source_topic: str,
+        message: bytes,
+        ack_fn: Optional[Callable[[], None]] = None,
+        nack_fn: Optional[Callable[..., None]] = None,
+        **source_kwargs
+    ):
+        limiter = self._inflight.get(source_client)
+        if limiter is None:
+            return self._route(source_client, source_topic, message, ack_fn, nack_fn, **source_kwargs)
+
+        if ack_fn is None and "ack_fn" in source_kwargs:
+            ack_fn = source_kwargs.pop("ack_fn")
+        if nack_fn is None and "nack_fn" in source_kwargs:
+            nack_fn = source_kwargs.pop("nack_fn")
+
+        lease = limiter.acquire()
+        if lease is None:
+            self._shed_over_cap(source_client, nack_fn)
+            return
+
+        def _releasing(fn):
+            if fn is None:
+                return None
+
+            def wrapped(*args, **kwargs):
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    lease.release()
+            return wrapped
+
+        # With confirmation callbacks the slot is held until the message is acked or nacked;
+        # without them (e.g. MQTT) it only covers the time spent inside route().
+        has_callbacks = ack_fn is not None or nack_fn is not None
+        try:
+            return self._route(
+                source_client, source_topic, message, _releasing(ack_fn), _releasing(nack_fn), **source_kwargs
+            )
+        except BaseException:
+            lease.release()
+            raise
+        finally:
+            if not has_callbacks:
+                lease.release()
+
+    def _shed_over_cap(self, source_client: str, nack_fn: Optional[Callable[..., None]]) -> None:
+        self.metrics.record_error(source_client, "inflight_limit")
+        logger.warning(f"In-flight cap reached for {source_client}; message not accepted")
+        if nack_fn:
+            # Requeue: the source is paused, so this redelivers once capacity frees.
+            try:
+                nack_fn(requeue=True)
+            except TypeError:
+                nack_fn()
+
+    def _route(
         self,
         source_client: str,
         source_topic: str,

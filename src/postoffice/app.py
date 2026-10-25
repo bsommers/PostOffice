@@ -30,6 +30,7 @@ class PostOffice:
         self.on_unroutable = on_unroutable
         self.dlq_budget: Optional[BudgetedDlq] = None
         self.firewall: Optional[Firewall] = None
+        self._inflight_limits: Dict[str, Dict[str, Any]] = {}
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
@@ -78,6 +79,21 @@ class PostOffice:
         """Installs the ingress firewall from a Firewall or a dict (same shape as a rules file); None disables."""
         self.firewall = Firewall.from_dict(config) if isinstance(config, dict) else config
         self.router.set_firewall(self.firewall)
+        if isinstance(config, dict):
+            for broker, limit in config.get("inflight", {}).items():
+                self.set_inflight_limit(broker, **limit)
+
+    def set_inflight_limit(
+        self, broker: str, max_inflight: Optional[int], low_water: Optional[int] = None,
+        lease_timeout: float = 60.0,
+    ) -> None:
+        """Caps un-confirmed messages from a source broker, applying native back-pressure (None removes)."""
+        if max_inflight is None:
+            self._inflight_limits.pop(broker, None)
+        else:
+            self._inflight_limits[broker] = dict(
+                max_inflight=max_inflight, low_water=low_water, lease_timeout=lease_timeout)
+        self.router.set_inflight_limit(broker, max_inflight, low_water=low_water, lease_timeout=lease_timeout)
 
     def set_metrics_port(self, port: Optional[int]) -> None:
         """Sets or updates the HTTP port used to expose Prometheus metrics."""
@@ -227,4 +243,6 @@ class PostOffice:
         if self.dlq_budget is not None:
             self.router.set_dlq_budget(self.dlq_budget)
         self.router.set_firewall(self.firewall)
+        for broker, limit in self._inflight_limits.items():
+            self.router.set_inflight_limit(broker, **limit)
         self.is_running = False
