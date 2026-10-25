@@ -43,6 +43,8 @@ class TestDeadLetterQueue(unittest.TestCase):
         self.router.register_client(src_client)
         self.router.register_client(dlq_client)
         self.router.set_dlq("dlq_broker", "system/dlq")
+        # DLQ for unroutable messages is opt-in; the default policy is nack.
+        self.router.set_unroutable_policy("dlq")
 
         ack_fn = MagicMock()
         nack_fn = MagicMock()

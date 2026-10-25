@@ -4,7 +4,7 @@ import time
 from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
 from postoffice.metrics import MetricsManager
-from postoffice.dlq import format_dlq_payload
+from postoffice.dlq import BudgetedDlq, format_dlq_payload
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
 from postoffice.schema import (
     BaseSchemaRegistry,
@@ -88,6 +88,8 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
 
 
 class Router:
+    VALID_UNROUTABLE_POLICIES = ("nack", "dlq", "drop")
+
     def __init__(
         self,
         metrics_manager: Optional[MetricsManager] = None,
@@ -106,6 +108,11 @@ class Router:
         # Global default Dead Letter Queue target
         self.default_dlq_broker: Optional[str] = None
         self.default_dlq_topic: Optional[str] = None
+        # What to do with messages that match no route: "nack" (default), "dlq" or "drop"
+        self.unroutable_policy: str = "nack"
+        self._unroutable_overrides: Dict[str, str] = {}
+        # Admission control for every DLQ write
+        self.dlq_budget = BudgetedDlq()
         # Per-broker egress circuit breakers
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
 
@@ -134,6 +141,21 @@ class Router:
         self.default_dlq_broker = broker_name
         self.default_dlq_topic = topic
         logger.info(f"Configured default DLQ target: {broker_name}/{topic}")
+
+    def set_unroutable_policy(self, policy: str, broker: Optional[str] = None) -> None:
+        """Sets the policy for unroutable messages, globally or for one source broker."""
+        if policy not in self.VALID_UNROUTABLE_POLICIES:
+            raise ValueError(
+                f"Invalid unroutable policy '{policy}'. Must be one of {self.VALID_UNROUTABLE_POLICIES}."
+            )
+        if broker is None:
+            self.unroutable_policy = policy
+        else:
+            self._unroutable_overrides[broker] = policy
+
+    def set_dlq_budget(self, budget: BudgetedDlq) -> None:
+        """Replaces the admission-control budget applied to DLQ writes."""
+        self.dlq_budget = budget
 
     def _route_to_dlq(
         self,
@@ -166,6 +188,13 @@ class Router:
                 except TypeError:
                     nack_fn()
             return True
+
+        refusal = self.dlq_budget.check(source_broker, len(payload))
+        if refusal:
+            # Counted, not logged per message: a flood must not become a log flood too.
+            self.metrics.record_dlq_refused(source_broker, refusal)
+            logger.debug(f"DLQ budget refused message from {source_broker}/{source_topic}: {refusal}")
+            return False
 
         try:
             dlq_bytes = format_dlq_payload(payload, source_broker, source_topic, error)
@@ -253,23 +282,30 @@ class Router:
             self.metrics.record_error(source_client, "unroutable")
             self.metrics.record_duration(source_client, time.perf_counter() - start_time)
 
-            dlq_configured = bool(self.default_dlq_broker and self.default_dlq_topic)
-            dlq_handled = self._route_to_dlq(
+            policy = self._unroutable_overrides.get(source_client, self.unroutable_policy)
+            if policy == "dlq" and self._route_to_dlq(
                 source_client,
                 source_topic,
                 message,
                 error="Unroutable message: no matching routes",
                 ack_fn=ack_fn,
                 nack_fn=nack_fn
-            )
-            if not dlq_handled:
-                if dlq_configured and nack_fn:
-                    try:
-                        nack_fn(requeue=True)
-                    except TypeError:
-                        nack_fn()
-                elif ack_fn:
+            ):
+                return
+            if policy == "drop":
+                if ack_fn:
                     ack_fn()
+                self.metrics.record_error(source_client, "unroutable_dropped")
+            elif nack_fn:
+                # requeue=False: an unroutable message fails identically on redelivery.
+                try:
+                    nack_fn(requeue=False)
+                except TypeError:
+                    nack_fn()
+                self.metrics.record_error(source_client, "unroutable_nacked")
+            else:
+                # Source cannot be pushed back (e.g. MQTT): the message is shed, but counted.
+                self.metrics.record_error(source_client, "unroutable_dropped")
             return
 
         def _handle_dlq_on_error(exc: Optional[Exception], failed_route: Optional[Dict[str, Any]]) -> bool:

@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, Optional, Union
+from postoffice.dlq import BudgetedDlq
 from postoffice.router import Router
 from postoffice.registry import ClientRegistry
 from postoffice.schema import BaseSchemaRegistry, SchemaEntry
@@ -20,9 +21,13 @@ class PostOffice:
         metrics_port: Optional[int] = None,
         dlq_broker: Optional[str] = None,
         dlq_topic: Optional[str] = None,
-        schema_registry: Optional[BaseSchemaRegistry] = None
+        schema_registry: Optional[BaseSchemaRegistry] = None,
+        on_unroutable: str = "nack"
     ):
         self.router = Router(schema_registry=schema_registry)
+        self.router.set_unroutable_policy(on_unroutable)
+        self.on_unroutable = on_unroutable
+        self.dlq_budget: Optional[BudgetedDlq] = None
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
@@ -50,6 +55,17 @@ class PostOffice:
         self.dlq_broker = broker_name
         self.dlq_topic = topic
         self.router.set_dlq(broker_name, topic)
+
+    def set_unroutable_policy(self, policy: str, broker: Optional[str] = None) -> None:
+        """Sets what happens to messages matching no route: 'nack' (default), 'dlq' or 'drop'."""
+        self.router.set_unroutable_policy(policy, broker=broker)
+        if broker is None:
+            self.on_unroutable = policy
+
+    def set_dlq_budget(self, **limits) -> None:
+        """Limits DLQ writes (max_message_bytes, msgs_per_sec, bytes_per_sec) per source broker."""
+        self.dlq_budget = BudgetedDlq(**limits)
+        self.router.set_dlq_budget(self.dlq_budget)
 
     def set_metrics_port(self, port: Optional[int]) -> None:
         """Sets or updates the HTTP port used to expose Prometheus metrics."""
@@ -195,4 +211,7 @@ class PostOffice:
         )
         if self.dlq_broker and self.dlq_topic:
             self.router.set_dlq(self.dlq_broker, self.dlq_topic)
+        self.router.set_unroutable_policy(self.on_unroutable)
+        if self.dlq_budget is not None:
+            self.router.set_dlq_budget(self.dlq_budget)
         self.is_running = False

@@ -146,7 +146,9 @@ Same conventions as `IMPLEMENTATION_TASKS.md`: TDD, hermetic, injectable clock, 
 - [ ] Implement; full suite; commit `feat: shared exponential backoff helper`.
 - Then adopt it (separate commits): T3 reconnect loops, `CircuitBreaker` probe growth + probe timeout (`test_failed_probe_doubles_recovery_timeout`, `test_success_resets_timeout`), Data Plane listener jitter.
 
-### Task D2: Unroutable policy + `BudgetedDlq`
+### Task D2: Unroutable policy + `BudgetedDlq` — DONE
+
+Implemented: `postoffice/ratelimit.py` (`TokenBucket`), `dlq.BudgetedDlq`, `Router.set_unroutable_policy/set_dlq_budget`, `PostOffice(on_unroutable=...)`. Deferred to D4: identical-error dedupe (`repeat_count`) and the metadata-only record for refused oversize payloads, which need the sender ledger. `TokenBucket` lives in `postoffice/ratelimit.py`, not `ingress/`, so D3 reuses it.
 
 **Files:** `router.py`, `dlq.py` (new `BudgetedDlq`), `app.py` (`on_unroutable`), `metrics.py`; Test `tests/test_unroutable_policy.py`, `tests/test_dlq_budget.py`.
 **Produces:** `PostOffice(on_unroutable: str = "nack")`, `set_unroutable_policy(broker, policy)`, `BudgetedDlq(max_message_bytes, msgs_per_sec, bytes_per_sec, dedupe_window, clock)`.

@@ -22,7 +22,7 @@ This page is deliberately candid. PostOffice's goal is to route and translate me
 | Kafka confirms | Delivery callbacks fire when polled, which happens on publish | Confirmation can lag after a burst ends |
 | MQTT/AMQP reconnect | A first-connection failure or later drop is not always retried | Monitor and restart; do not assume self-healing |
 | Publish buffer | In memory, bounded by count, lost on restart | Not a durable queue |
-| Unroutable messages | Acknowledged and dropped when no DLQ is configured | Always configure a DLQ |
+| Unroutable messages | `nack` without requeue by default; `dlq` and `drop` are opt-in. On Kafka and MQTT a nack is effectively a skip | Watch `unroutable_*` counters; use `on_unroutable="dlq"` if you must keep them |
 | Fan-out failure routing | Fixed in this review cycle: each route now uses its own DLQ | Covered by `tests/test_p0_hardening.py` |
 
 These are scheduled as Tasks 1–4 in `.planning/reviews/IMPLEMENTATION_TASKS.md`. Until they land, treat PostOffice as suitable for telemetry and event propagation, and test failure scenarios (broker down, consumer killed) in your own environment before using it for events you cannot regenerate.

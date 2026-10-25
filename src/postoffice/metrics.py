@@ -45,6 +45,17 @@ class MetricsManager:
             registry=self.registry
         )
 
+        self.dlq_refused = Counter(
+            'postoffice_dlq_refused_total',
+            'Total number of Dead Letter Queue writes refused by the DLQ budget',
+            ['source_broker', 'reason'],
+            registry=self.registry
+        )
+
+    def record_dlq_refused(self, source_broker: str, reason: str) -> None:
+        """Increments the dlq_refused counter."""
+        self.dlq_refused.labels(source_broker=source_broker, reason=reason).inc()
+
     def record_routed(self, source_broker: str, target_broker: str, status: str = "success") -> None:
         """Increments the messages_routed counter."""
         self.messages_routed.labels(
