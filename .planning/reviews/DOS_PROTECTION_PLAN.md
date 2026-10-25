@@ -160,7 +160,9 @@ Same conventions as `IMPLEMENTATION_TASKS.md`: TDD, hermetic, injectable clock, 
 - [ ] Failing tests: payload over limit → REJECT without decoding; topic too long/deep/denied → REJECT; token bucket allows burst then denies, refills with fake clock; keyed limiter evicts LRU past `max_keys` (limiter memory is bounded); identity extraction from topic template; rule exceptions yield `on_rule_error` verdict; DROP acks, REJECT nacks with `requeue=False`; firewall runs before trie match (assert `client_tries` not consulted on reject); metrics counted.
 - [ ] Implement; commit `feat(ingress): firewall core with size, topic-shape and rate-limit rules`.
 
-### Task D4: Strikes (exponential offender cool-down)
+### Task D4: SenderLedger (observe-first) then opt-in cool-down
+
+See 5.1. Tests: counters per category and sender; trend detection with a fake clock; LRU/TTL bounds with an `other` bucket; `sender_report(top=N)` shape; observe-only mode never changes a verdict; with `enforce=True` repeated violations start an exponentially growing cool-down.
 
 - [ ] Failing tests with fake clock: threshold crossing starts a cool-down; repeated crossing doubles it up to the cap; quiet period decays strikes; cooled key is DROPped before other rules run.
 - [ ] Implement on top of D1 + D3; commit `feat(ingress): escalating offender cool-down`.
@@ -201,7 +203,26 @@ Same conventions as `IMPLEMENTATION_TASKS.md`: TDD, hermetic, injectable clock, 
 
 D1 → D2 → T6 (existing plan) → D3 → D4 → D5 → D6 → D7 → D8 → D9 → D10. D1+D2 are small and deliver the user's immediate decision; D3 is the largest and the foundation for D4–D6.
 
-## 5. Open decisions for the user
+## 5. Decisions
+
+| # | Question | Decision (2026-10-25) |
+|---|---|---|
+| 1 | Default unroutable nack | `nack(requeue=False)`, default. Note: for Kafka and MQTT a non-requeue nack is effectively skip, so it must be counted (`unroutable_total`) and visible, not silent |
+| 2 | MQTT back-pressure | Pending; explained to the user, see message history |
+| 3 | Rule config format | **Both**: Python API and a YAML/JSON file loaded by the worker (same `from_dict` path) |
+| 4 | Oversized DLQ payloads | **Refuse to store** (no truncation). Record a metadata-only event instead and attribute it to the sender; see 5.1 |
+
+### 5.1 Sender behaviour ledger (replaces the "Strikes" framing)
+
+Goal: *track* before *punishing*. Oversize, malformed, rate-exceeded and unroutable events may be misconfiguration or a buggy device as often as an attack, so nothing here assumes malice.
+
+- `SenderLedger` records per `(source_broker, sender_key)` counters by **category**: `oversize`, `malformed`, `rate_exceeded`, `unroutable`, `schema_mismatch`, `forbidden_topic`. `sender_key` is the most specific identity available: topic-template capture (device id), AMQP `user_id`/routing key, Kafka message key, else the topic itself.
+- Bounded memory (LRU + TTL on keys); the ledger cannot be DoSed by key cardinality. Keys beyond the cap aggregate into `other` and are counted.
+- Per sender it keeps: first/last seen, counts per category per window, and a short rolling rate, so a **rising trend** is visible (current window vs. previous window), not only totals.
+- Exposed three ways: Prometheus (`sender_events_total{broker,category}` with sender label only for the top-N offenders, to protect cardinality), a `po.sender_report(top=N)` call returning structured rows, and a periodic WARNING log naming senders whose rate has risen past a configured factor.
+- Each row carries a `likely_cause` hint to steer diagnosis, not to accuse: repeated identical error from one sender suggests misconfig or a stuck device; broad varied errors across many senders suggest an outage or bad rollout; high rate of mixed categories from one sender suggests abuse.
+- **Enforcement is separate and opt-in**: cool-down/escalation (the old `Strikes`) only acts when a policy is set (`enforce=True`). The default is observe-only.
+- Oversized payloads: DLQ stores a **metadata-only** record (source, topic, sender, original size, rule) when the budget allows, or just the ledger entry; never the body.
 
 1. **Nack semantics:** the plan uses `requeue=False` for the default unroutable nack (requeue would loop forever). On AMQP that discards the message unless a broker-side DLX exists. Confirm this is wanted, or choose `requeue=True` with a retry cap (D7).
 2. **MQTT sources:** accept that PostOffice can only shed (drop/disconnect), not slow, MQTT publishers, with broker-side limits as the real control?
