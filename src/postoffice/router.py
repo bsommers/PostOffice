@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
+from postoffice.ingress import Action, Firewall, MessageContext
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import BudgetedDlq, format_dlq_payload
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
@@ -113,6 +114,8 @@ class Router:
         self._unroutable_overrides: Dict[str, str] = {}
         # Admission control for every DLQ write
         self.dlq_budget = BudgetedDlq()
+        # Ingress firewall evaluated before routing (None = disabled)
+        self.firewall: Optional[Firewall] = None
         # Per-broker egress circuit breakers
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
 
@@ -152,6 +155,10 @@ class Router:
             self.unroutable_policy = policy
         else:
             self._unroutable_overrides[broker] = policy
+
+    def set_firewall(self, firewall) -> None:
+        """Installs (or with None removes) the ingress firewall evaluated before routing."""
+        self.firewall = firewall
 
     def set_dlq_budget(self, budget: BudgetedDlq) -> None:
         """Replaces the admission-control budget applied to DLQ writes."""
@@ -254,6 +261,19 @@ class Router:
 
         logger.info(f"Added route: {source_client}/{source_topic} -> {target_client}/{target_topic} with kwargs {target_kwargs}")
 
+    def _apply_ingress_verdict(self, source_client, verdict, ack_fn, nack_fn, start_time) -> None:
+        self.metrics.record_ingress(source_client, verdict.rule or "unknown", verdict.action.value)
+        self.metrics.record_duration(source_client, time.perf_counter() - start_time)
+        logger.debug(f"Ingress {verdict.action.value} from {source_client} by {verdict.rule}: {verdict.reason}")
+        if verdict.action == Action.DROP:
+            if ack_fn:
+                ack_fn()
+        elif nack_fn:
+            try:
+                nack_fn(requeue=False)
+            except TypeError:
+                nack_fn()
+
     def route(
         self,
         source_client: str,
@@ -272,6 +292,14 @@ class Router:
             nack_fn = source_kwargs.pop("nack_fn")
 
         logger.debug(f"Received message from {source_client} on {source_topic} ({len(message)} bytes)")
+
+        if self.firewall is not None:
+            verdict = self.firewall.evaluate(
+                MessageContext(source_client, source_topic, len(message), message)
+            )
+            if verdict.action != Action.ALLOW:
+                self._apply_ingress_verdict(source_client, verdict, ack_fn, nack_fn, start_time)
+                return
 
         # Find all matching routes in O(k) time via TopicTrie
         client_trie = self.client_tries.get(source_client)

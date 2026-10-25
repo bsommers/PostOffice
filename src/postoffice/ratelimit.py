@@ -1,4 +1,5 @@
 import threading
+from collections import OrderedDict
 import time
 from typing import Callable
 
@@ -37,3 +38,53 @@ class TokenBucket:
                 self._tokens -= cost
                 return True
             return False
+
+
+class KeyedLimiter:
+    """Per-key token buckets with LRU and idle-TTL eviction, so memory stays bounded.
+
+    An evicted key restarts with a full bucket; the cap trades a little leniency for a hard
+    memory bound that key-cardinality attacks cannot exceed.
+    """
+
+    def __init__(
+        self,
+        rate: float,
+        burst: float,
+        max_keys: int = 10000,
+        ttl: float = 300.0,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        if max_keys <= 0:
+            raise ValueError("max_keys must be > 0")
+        if ttl <= 0:
+            raise ValueError("ttl must be > 0")
+        TokenBucket(rate, burst)  # validate eagerly
+        self.rate = rate
+        self.burst = burst
+        self.max_keys = max_keys
+        self.ttl = ttl
+        self._clock = clock
+        self._buckets: "OrderedDict[str, tuple]" = OrderedDict()
+        self._lock = threading.Lock()
+
+    @property
+    def tracked_keys(self) -> int:
+        with self._lock:
+            return len(self._buckets)
+
+    def try_consume(self, key: str, cost: float = 1.0) -> bool:
+        now = self._clock()
+        with self._lock:
+            # Oldest entries sit at the front; drop idle ones, then enforce the cap.
+            while self._buckets:
+                oldest_key, (_, last_seen) = next(iter(self._buckets.items()))
+                if now - last_seen <= self.ttl:
+                    break
+                del self._buckets[oldest_key]
+            entry = self._buckets.pop(key, None)
+            bucket = entry[0] if entry else TokenBucket(self.rate, self.burst, self._clock)
+            self._buckets[key] = (bucket, now)
+            while len(self._buckets) > self.max_keys:
+                self._buckets.popitem(last=False)
+        return bucket.try_consume(cost)

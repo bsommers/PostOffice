@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional, Union
 from postoffice.dlq import BudgetedDlq
+from postoffice.ingress import Firewall
 from postoffice.router import Router
 from postoffice.registry import ClientRegistry
 from postoffice.schema import BaseSchemaRegistry, SchemaEntry
@@ -28,6 +29,7 @@ class PostOffice:
         self.router.set_unroutable_policy(on_unroutable)
         self.on_unroutable = on_unroutable
         self.dlq_budget: Optional[BudgetedDlq] = None
+        self.firewall: Optional[Firewall] = None
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
@@ -66,6 +68,11 @@ class PostOffice:
         """Limits DLQ writes (max_message_bytes, msgs_per_sec, bytes_per_sec) per source broker."""
         self.dlq_budget = BudgetedDlq(**limits)
         self.router.set_dlq_budget(self.dlq_budget)
+
+    def configure_ingress(self, config: Union[Firewall, Dict[str, Any], None]) -> None:
+        """Installs the ingress firewall from a Firewall or a dict (same shape as a rules file); None disables."""
+        self.firewall = Firewall.from_dict(config) if isinstance(config, dict) else config
+        self.router.set_firewall(self.firewall)
 
     def set_metrics_port(self, port: Optional[int]) -> None:
         """Sets or updates the HTTP port used to expose Prometheus metrics."""
@@ -214,4 +221,5 @@ class PostOffice:
         self.router.set_unroutable_policy(self.on_unroutable)
         if self.dlq_budget is not None:
             self.router.set_dlq_budget(self.dlq_budget)
+        self.router.set_firewall(self.firewall)
         self.is_running = False

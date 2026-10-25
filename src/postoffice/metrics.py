@@ -45,12 +45,23 @@ class MetricsManager:
             registry=self.registry
         )
 
+        self.ingress = Counter(
+            'postoffice_ingress_total',
+            'Messages stopped by the ingress firewall',
+            ['source_broker', 'rule', 'action'],
+            registry=self.registry
+        )
+
         self.dlq_refused = Counter(
             'postoffice_dlq_refused_total',
             'Total number of Dead Letter Queue writes refused by the DLQ budget',
             ['source_broker', 'reason'],
             registry=self.registry
         )
+
+    def record_ingress(self, source_broker: str, rule: str, action: str) -> None:
+        """Increments the ingress firewall counter."""
+        self.ingress.labels(source_broker=source_broker, rule=rule, action=action).inc()
 
     def record_dlq_refused(self, source_broker: str, reason: str) -> None:
         """Increments the dlq_refused counter."""

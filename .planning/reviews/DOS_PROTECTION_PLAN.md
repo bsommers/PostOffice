@@ -155,7 +155,9 @@ Implemented: `postoffice/ratelimit.py` (`TokenBucket`), `dlq.BudgetedDlq`, `Rout
 - [ ] Failing tests: `test_default_unroutable_calls_nack_without_requeue`; `test_policy_dlq_publishes_envelope`; `test_policy_drop_acks`; `test_invalid_policy_raises_value_error`; `test_dlq_truncates_oversized_payload_and_records_original_size`; `test_dlq_rate_limit_exceeded_falls_back_to_nack`; `test_per_source_budget_isolated`; `test_identical_errors_deduped_with_repeat_count`; `test_dlq_budget_exceeded_metric_incremented`.
 - [ ] Implement; update the existing tests that asserted ack-on-unroutable; commit `feat(router): unroutable policy (default nack) and budgeted DLQ`.
 
-### Task D3: Ingress firewall core + size/shape/rate rules
+### Task D3: Ingress firewall core + size/shape/rate rules (DONE)
+
+Implemented: `ingress/{rules,firewall}.py`, `ratelimit.KeyedLimiter`, `Router.set_firewall`, `PostOffice.configure_ingress` (Firewall or dict), `postoffice_ingress_total{source_broker,rule,action}`. Verdicts carry a `category` for the D4 ledger. Not yet done: loading rules from a JSON/YAML file in the worker (`from_dict` is the shared path; wiring deferred to D10 with docs).
 
 **Files:** Create `src/postoffice/ingress/{__init__,firewall,rules,ratelimit}.py`; Modify `router.py`, `app.py` (`configure_ingress`); Test `tests/test_firewall_*.py`.
 **Produces:** `Action`, `Verdict`, `MessageContext`, `Firewall.evaluate(ctx) -> Verdict`, `TokenBucket(rate, burst, clock)`, `KeyedLimiter(max_keys, ttl, clock)`, rules `MaxPayloadBytes`, `TopicShape`, `RateLimit`.
