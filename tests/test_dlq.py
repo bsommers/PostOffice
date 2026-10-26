@@ -9,6 +9,7 @@ from postoffice.app import PostOffice
 class TestDeadLetterQueue(unittest.TestCase):
     def setUp(self):
         self.router = Router()
+        self.router.set_retry_policy(base_delay=0)  # these tests assert the immediate requeue
 
     def test_format_dlq_payload_text(self):
         msg = b"temperature sensor: 21.5C"

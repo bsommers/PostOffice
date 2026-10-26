@@ -90,6 +90,7 @@ class TestInflightLimiter(unittest.TestCase):
 
 def make_router(limit=2, low_water=None, **kw):
     router = Router()
+    router.set_retry_policy(base_delay=0)
     src, dst = MagicMock(), MagicMock()
     src.name, dst.name = "src", "dst"
     router.register_client(src)

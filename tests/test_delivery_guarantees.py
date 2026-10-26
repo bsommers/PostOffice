@@ -8,6 +8,7 @@ from postoffice.plugins.mqtt_client import MqttClient
 class TestDeliveryGuarantees(unittest.TestCase):
     def setUp(self):
         self.router = Router()
+        self.router.set_retry_policy(base_delay=0)  # these tests assert the immediate requeue
 
     def test_single_target_ack(self):
         source_client = MagicMock()

@@ -41,6 +41,14 @@ class ExponentialBackoff:
             self._attempt += 1
         return self._rng.uniform(0.0, ceiling) if self.jitter == "full" else ceiling
 
+    def delay_for(self, attempt: int) -> float:
+        """Stateless delay for a 0-based attempt number, for callers that track attempts per key."""
+        try:
+            ceiling = min(self.cap, self.base * self.factor ** attempt)
+        except OverflowError:
+            ceiling = self.cap
+        return self._rng.uniform(0.0, ceiling) if self.jitter == "full" else ceiling
+
     def reset(self) -> None:
         self._attempt = 0
 

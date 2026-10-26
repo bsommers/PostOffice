@@ -1,9 +1,10 @@
+import hashlib
 import logging
 import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
-from postoffice.ingress import Action, Firewall, InflightLimiter, MessageContext
+from postoffice.ingress import Action, Firewall, InflightLimiter, MessageContext, RetryTracker
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import BudgetedDlq, format_dlq_payload
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
@@ -118,6 +119,10 @@ class Router:
         self.firewall: Optional[Firewall] = None
         # Per-source in-flight caps with protocol-native back-pressure
         self._inflight: Dict[str, InflightLimiter] = {}
+        # Cap on requeue-driven redelivery of failing messages (None = unbounded legacy behaviour)
+        self.retry: Optional[RetryTracker] = None
+        self._schedule: Callable[[float, Callable[[], None]], None] = self._timer_schedule
+        self.set_retry_policy()
         # Per-broker egress circuit breakers
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
 
@@ -265,6 +270,76 @@ class Router:
         )
         self._call_client(broker, "set_inflight_limit", max_inflight)
 
+    @staticmethod
+    def _timer_schedule(delay: float, fn: Callable[[], None]) -> None:
+        timer = threading.Timer(delay, fn)
+        timer.daemon = True
+        timer.start()
+
+    def set_retry_policy(
+        self,
+        max_attempts: Optional[int] = 5,
+        base_delay: float = 0.5,
+        scheduler: Optional[Callable[[float, Callable[[], None]], None]] = None,
+        **tracker_options
+    ) -> None:
+        """
+        Bounds requeue-driven redelivery: a message whose delivery keeps failing is requeued up to
+        ``max_attempts`` times with exponential backoff, then nacked without requeue (counted as
+        ``retry_exhausted``). ``max_attempts=None`` restores unbounded immediate requeue.
+        """
+        self._schedule = scheduler or self._timer_schedule
+        self.retry = None if max_attempts is None else RetryTracker(
+            max_attempts=max_attempts, base_delay=base_delay, **tracker_options)
+
+    @staticmethod
+    def _call_nack(nack_fn: Callable[..., None], requeue: bool) -> None:
+        try:
+            nack_fn(requeue=requeue)
+        except TypeError:
+            nack_fn()
+
+    def _with_retry_cap(self, source_client, source_topic, message, source_kwargs, ack_fn, nack_fn):
+        """Wraps ack/nack so requeues are capped and delayed; no-op without a nack callback."""
+        tracker = self.retry
+        if tracker is None or nack_fn is None:
+            return ack_fn, nack_fn
+
+        message_id = source_kwargs.get("message_id")
+
+        def key() -> str:
+            # Hashing happens only once a failure or a tracked success needs it.
+            if message_id is not None:
+                return f"{source_client}:id:{message_id}"
+            return f"{source_client}:{source_topic}:{hashlib.blake2b(message, digest_size=16).hexdigest()}"
+
+        def ack():
+            if tracker.tracked_keys:
+                tracker.forget(key())
+            if ack_fn:
+                ack_fn()
+
+        def nack(requeue: bool = True):
+            if not requeue:
+                tracker.forget(key())
+                self._call_nack(nack_fn, False)
+                return
+            decision = tracker.record_failure(key())
+            if decision.exhausted:
+                tracker.forget(key())
+                self.metrics.record_error(source_client, "retry_exhausted")
+                logger.warning(
+                    f"Message from {source_client}/{source_topic} failed {decision.attempt} deliveries; "
+                    f"giving up (nack without requeue)"
+                )
+                self._call_nack(nack_fn, False)
+            elif decision.delay > 0:
+                self._schedule(decision.delay, lambda: self._call_nack(nack_fn, True))
+            else:
+                self._call_nack(nack_fn, True)
+
+        return (ack if ack_fn else None), nack
+
     def inflight(self, broker: str) -> int:
         limiter = self._inflight.get(broker)
         return limiter.inflight if limiter is not None else 0
@@ -395,6 +470,8 @@ class Router:
             ack_fn = source_kwargs.pop("ack_fn")
         if nack_fn is None and "nack_fn" in source_kwargs:
             nack_fn = source_kwargs.pop("nack_fn")
+        ack_fn, nack_fn = self._with_retry_cap(
+            source_client, source_topic, message, source_kwargs, ack_fn, nack_fn)
 
         logger.debug(f"Received message from {source_client} on {source_topic} ({len(message)} bytes)")
 

@@ -31,6 +31,7 @@ class PostOffice:
         self.dlq_budget: Optional[BudgetedDlq] = None
         self.firewall: Optional[Firewall] = None
         self._inflight_limits: Dict[str, Dict[str, Any]] = {}
+        self._retry_policy: Optional[Dict[str, Any]] = None
         self.brokers: Dict[str, Any] = {}
         self.is_running = False
         self.metrics_port = metrics_port
@@ -82,6 +83,11 @@ class PostOffice:
         if isinstance(config, dict):
             for broker, limit in config.get("inflight", {}).items():
                 self.set_inflight_limit(broker, **limit)
+
+    def set_retry_policy(self, max_attempts: Optional[int] = 5, base_delay: float = 0.5, **options) -> None:
+        """Caps requeue-driven redelivery of failing messages (max_attempts=None = unbounded)."""
+        self._retry_policy = dict(max_attempts=max_attempts, base_delay=base_delay, **options)
+        self.router.set_retry_policy(**self._retry_policy)
 
     def set_inflight_limit(
         self, broker: str, max_inflight: Optional[int], low_water: Optional[int] = None,
@@ -245,4 +251,6 @@ class PostOffice:
         self.router.set_firewall(self.firewall)
         for broker, limit in self._inflight_limits.items():
             self.router.set_inflight_limit(broker, **limit)
+        if self._retry_policy is not None:
+            self.router.set_retry_policy(**self._retry_policy)
         self.is_running = False

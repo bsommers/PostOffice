@@ -189,7 +189,9 @@ Implemented: `ingress/concurrency.py` (`InflightLimiter`: cap, `low_water` hyste
 - [ ] Failing tests: at `max_inflight` AMQP prefetch is set and further deliveries are not acked until capacity frees; Kafka `pause` called at the cap and `resume` below a low-water mark; MQTT degrades to DROP; counter decrements on confirm and on error (no leak).
 - [ ] Commit `feat(ingress): bounded in-flight with protocol-native back-pressure`.
 
-### Task D7: Retry caps for requeue loops
+### Task D7: Retry caps for requeue loops (DONE)
+
+Implemented: `ingress/retry.py` (`RetryTracker`: per-message failure count, LRU+TTL bounded, exponential delay via new stateless `ExponentialBackoff.delay_for`), `Router.set_retry_policy` / `PostOffice.set_retry_policy` (re-applied on `reset()`). A failed delivery with no DLQ is requeued after the backoff delay (the slot and lease stay held meanwhile), and after `max_attempts` is nacked with `requeue=False` and counted as `retry_exhausted`. Key is the `message_id` kwarg when a source provides one, else a blake2b hash of source/topic/body (hashed only on failure or when failures are outstanding). The budgeted DLQ is already tried on every failure before retry, so exhaustion does not retry it. **Behaviour change:** the default is now 5 attempts, 0.5s base delay (was: immediate unbounded requeue); `max_attempts=None` restores the old behaviour. Three existing tests that assert immediate requeue now set `base_delay=0`. Known gaps: the AMQP plugin does not yet pass `message_id` or `x-death` counts (the hash key is used); the shed-over-cap requeue from D6 is deliberately not counted as a failure.
 
 - [ ] Failing tests: `nack(requeue=True)` path stops after N attempts (counter keyed by message id/header) and goes to budgeted DLQ or drop; redelivery delay follows backoff.
 - [ ] Commit `fix(amqp): cap poison redelivery`. (Supersedes the A4 sub-item of T2.)
