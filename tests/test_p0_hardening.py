@@ -37,7 +37,7 @@ class TestResetAndClearState(unittest.TestCase):
             dp._process_update_message(
                 {"type": "message", "data": json.dumps({"action": "clear_state", "data": {}})}
             )
-            start_server.assert_called_once_with(0)
+            start_server.assert_called_once_with(0, addr="127.0.0.1")
 
     @patch("postoffice.data_plane.redis.Redis")
     def test_clear_state_on_stopped_worker_stays_stopped(self, _mock_redis):

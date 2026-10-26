@@ -213,6 +213,7 @@ class AmqpClient(BaseClient):
                         password=self.security.client_key_password,
                     )
                 if self.security.insecure_skip_verify:
+                    logger.warning("%s: insecure_skip_verify is set; TLS certificates are NOT verified (use only for local development).", self.name)
                     context.check_hostname = False
                     context.verify_mode = ssl.CERT_NONE
                 ssl_options = pika.SSLOptions(context, server_hostname=self.host)

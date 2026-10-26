@@ -66,7 +66,7 @@ class TestMetrics(unittest.TestCase):
         po.router.metrics.stop_server = MagicMock()
 
         po.start()
-        po.router.metrics.start_server.assert_called_once_with(19100)
+        po.router.metrics.start_server.assert_called_once_with(19100, addr="127.0.0.1")
 
         po.stop()
         po.router.metrics.stop_server.assert_called_once()

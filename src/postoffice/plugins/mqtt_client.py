@@ -50,6 +50,7 @@ class MqttClient(BaseClient):
                 tls_version=ssl.PROTOCOL_TLS_CLIENT,
             )
             if self.security.insecure_skip_verify:
+                logger.warning("%s: insecure_skip_verify is set; TLS certificates are NOT verified (use only for local development).", self.name)
                 self.client.tls_insecure_set(True)
 
         self.client.on_connect = self._on_connect

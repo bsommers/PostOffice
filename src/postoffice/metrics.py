@@ -158,8 +158,8 @@ class MetricsManager:
         """Returns the Prometheus text-formatted metrics snapshot."""
         return generate_latest(self.registry).decode('utf-8')
 
-    def start_server(self, port: int, addr: str = '0.0.0.0') -> None:
-        """Starts a background HTTP server serving metrics on the specified port."""
+    def start_server(self, port: int, addr: str = '127.0.0.1') -> None:
+        """Starts a background HTTP server serving metrics; loopback only unless ``addr`` says otherwise."""
         with self._server_lock:
             if self._server_handle is not None:
                 logger.warning(f"Metrics HTTP server is already running.")

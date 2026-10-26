@@ -1,6 +1,7 @@
 import json
 import redis
 import logging
+from typing import Optional
 import threading
 from postoffice.app import PostOffice
 
@@ -12,8 +13,12 @@ class DataPlane:
     Downloads state from Redis and listens for live updates.
     Many DataPlanes can run concurrently to scale out horizontally.
     """
-    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
-        self.r = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
+                 redis_password: Optional[str] = None, redis_tls: bool = False):
+        self.r = redis.Redis(
+            host=redis_host, port=redis_port, password=redis_password, ssl=redis_tls,
+            decode_responses=True,
+        )
         self.po = PostOffice()
         self.pubsub = self.r.pubsub()
         self.channel = "postoffice:config_updates"

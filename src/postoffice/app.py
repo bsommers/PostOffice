@@ -25,7 +25,9 @@ class PostOffice:
         schema_registry: Optional[BaseSchemaRegistry] = None,
         on_unroutable: str = "nack",
         max_routes_per_topic: Optional[int] = 100,
+        metrics_addr: str = "127.0.0.1",
     ):
+        self.metrics_addr = metrics_addr
         self.max_routes_per_topic = max_routes_per_topic
         self.router = Router(schema_registry=schema_registry, max_routes_per_topic=max_routes_per_topic)
         self.router.set_unroutable_policy(on_unroutable)
@@ -103,9 +105,11 @@ class PostOffice:
                 max_inflight=max_inflight, low_water=low_water, lease_timeout=lease_timeout)
         self.router.set_inflight_limit(broker, max_inflight, low_water=low_water, lease_timeout=lease_timeout)
 
-    def set_metrics_port(self, port: Optional[int]) -> None:
-        """Sets or updates the HTTP port used to expose Prometheus metrics."""
+    def set_metrics_port(self, port: Optional[int], addr: Optional[str] = None) -> None:
+        """Sets the HTTP port for Prometheus metrics; ``addr`` (default loopback) must be widened explicitly."""
         self.metrics_port = port
+        if addr is not None:
+            self.metrics_addr = addr
 
     def reload_broker_security(
         self,
@@ -211,7 +215,7 @@ class PostOffice:
         """
         self.is_running = True
         if self.metrics_port is not None:
-            self.router.metrics.start_server(self.metrics_port)
+            self.router.metrics.start_server(self.metrics_port, addr=self.metrics_addr)
 
         logger.info("Starting all PostOffice broker connections...")
         for name, broker in self.brokers.items():

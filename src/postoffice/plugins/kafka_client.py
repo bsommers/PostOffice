@@ -53,6 +53,7 @@ class KafkaClient(BaseClient):
             if self.security.client_key_password:
                 conf['ssl.key.password'] = self.security.client_key_password
             if self.security.insecure_skip_verify:
+                logger.warning("%s: insecure_skip_verify is set; TLS certificates are NOT verified (use only for local development).", self.name)
                 conf['enable.ssl.certificate.verification'] = False
 
         if has_sasl:

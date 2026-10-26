@@ -1,6 +1,7 @@
 import json
 import redis
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +11,12 @@ class ControlPlane:
     State is saved to Redis, and changes are broadcasted via Pub/Sub so that
     any number of DataPlane workers can sync rules without restarting.
     """
-    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
-        self.r = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
+                 redis_password: Optional[str] = None, redis_tls: bool = False):
+        self.r = redis.Redis(
+            host=redis_host, port=redis_port, password=redis_password, ssl=redis_tls,
+            decode_responses=True,
+        )
         self.channel = "postoffice:config_updates"
 
     def _publish_update(self, action: str, data: dict):

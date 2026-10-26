@@ -9,8 +9,12 @@ from postoffice.control_plane import ControlPlane
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 def inject_test_config():
-    redis_host = os.environ.get("REDIS_HOST", "localhost")
-    cp = ControlPlane(redis_host=redis_host)
+    cp = ControlPlane(
+        redis_host=os.environ.get("REDIS_HOST", "localhost"),
+        redis_port=int(os.environ.get("REDIS_PORT", "6379")),
+        redis_password=os.environ.get("REDIS_PASSWORD") or None,
+        redis_tls=os.environ.get("REDIS_TLS") == "1",
+    )
 
     print("Clearing old state...")
     cp.clear_state()

@@ -102,6 +102,8 @@
 
 ### Task 5: Security-scan fixes (Medium/Low)
 
+**Status: DONE.** `start_server`/`set_metrics_port` default to `127.0.0.1` (`PostOffice(metrics_addr=...)`, `set_metrics_port(port, addr=...)`); `ControlPlane`/`DataPlane` take `redis_password`/`redis_tls`; `worker.py` and `scripts/admin.py` read `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS=1`; all three plugins log a WARNING when `insecure_skip_verify` is set. Behaviour change: metrics were reachable on all interfaces and now bind loopback unless widened explicitly. Tests: `tests/test_security_hardening.py`. No compose file starts a worker with metrics, so none needed updating.
+
 **Files:** Modify `metrics.py`, `app.py` (`set_metrics_port`), `control_plane.py`, `data_plane.py`, `worker.py`, the three plugins (warning on skip-verify); Test `tests/test_security_hardening.py`.
 
 **Interfaces:** Produces `MetricsManager.start_server(port, addr="127.0.0.1")`, `PostOffice.set_metrics_port(port, addr="127.0.0.1")`, and env vars `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS` ("1" enables), read in `worker.py` and passed to `DataPlane`/`ControlPlane` constructors as `redis_password: str | None`, `redis_tls: bool`.
