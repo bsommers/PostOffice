@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional, Callable
 from postoffice.trie import TopicTrie
 from postoffice.ingress import Action, Firewall, InflightLimiter, MessageContext, RetryTracker
 from postoffice.metrics import MetricsManager
-from postoffice.dlq import BudgetedDlq, format_dlq_payload
+from postoffice.dlq import BudgetedDlq, dlq_fingerprint, format_dlq_payload
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
 from postoffice.schema import (
     BaseSchemaRegistry,
@@ -209,15 +209,29 @@ class Router:
                     nack_fn()
             return True
 
-        refusal = self.dlq_budget.check(source_broker, len(payload))
+        fingerprint = (
+            dlq_fingerprint(source_broker, source_topic, error, payload)
+            if self.dlq_budget.dedupe_window else None
+        )
+        admission = self.dlq_budget.admit(source_broker, len(payload), fingerprint)
+        refusal = admission.refusal
+        if refusal == "duplicate":
+            # An identical message was already dead-lettered inside the window: it is on record.
+            self.metrics.record_dlq_refused(source_broker, refusal)
+            if ack_fn:
+                ack_fn()
+            return True
         if refusal:
             # Counted, not logged per message: a flood must not become a log flood too.
             self.metrics.record_dlq_refused(source_broker, refusal)
             logger.debug(f"DLQ budget refused message from {source_broker}/{source_topic}: {refusal}")
+            if refusal == "oversize":
+                self._record_oversize(source_broker, source_topic, payload, error, target_broker, target_topic)
             return False
 
         try:
-            dlq_bytes = format_dlq_payload(payload, source_broker, source_topic, error)
+            metadata = {"repeat_count": admission.repeat_count} if admission.repeat_count else None
+            dlq_bytes = format_dlq_payload(payload, source_broker, source_topic, error, metadata=metadata)
             if target_broker in self.clients:
                 self.clients[target_broker].publish(target_topic, dlq_bytes)
                 self.metrics.record_dlq(source_broker, target_broker, target_topic)
@@ -233,6 +247,28 @@ class Router:
             logger.error(f"Error publishing to DLQ {target_broker}/{target_topic}: {e}")
             self.metrics.record_error(source_broker, "dlq_publish_failure")
             return False
+
+    def _record_oversize(
+        self, source_broker: str, source_topic: str, payload: bytes, error: str,
+        target_broker: str, target_topic: str,
+    ) -> None:
+        """Leaves a payload-free forensic record for a refused oversize message and flags its sender."""
+        if self.firewall is not None:
+            self.firewall.note(MessageContext(source_broker, source_topic, len(payload)), "oversize")
+        record = format_dlq_payload(
+            b"", source_broker, source_topic, error,
+            metadata={"payload_omitted": True, "original_size": len(payload), "reason": "oversize"},
+        )
+        if self.dlq_budget.admit(source_broker, len(record), metadata_only=True).refusal:
+            return
+        client = self.clients.get(target_broker)
+        if client is None:
+            return
+        try:
+            client.publish(target_topic, record)
+            self.metrics.record_error(source_broker, "dlq_metadata_only")
+        except Exception as e:
+            logger.error(f"Error publishing oversize metadata record to DLQ {target_broker}/{target_topic}: {e}")
 
     def register_client(self, client: Any):
         self.clients[client.name] = client

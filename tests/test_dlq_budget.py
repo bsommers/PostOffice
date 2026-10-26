@@ -7,6 +7,13 @@ from postoffice.ratelimit import TokenBucket
 from postoffice.router import Router
 
 
+def only_payload_free(dlq):
+    """The oversize body must never be stored: at most a metadata-only record is published."""
+    for call in dlq.publish.call_args_list:
+        envelope = json.loads(call.args[1])
+        assert envelope["payload"] == "" and envelope["metadata"]["payload_omitted"], envelope
+
+
 class FakeClock:
     def __init__(self):
         self.now = 1000.0
@@ -101,7 +108,7 @@ class TestRouterAppliesDlqBudget(unittest.TestCase):
         router, dlq = self._router(BudgetedDlq(max_message_bytes=10, clock=FakeClock()))
         ack, nack = MagicMock(), MagicMock()
         router.route("src", "nowhere", b"x" * 11, ack_fn=ack, nack_fn=nack)
-        dlq.publish.assert_not_called()
+        only_payload_free(dlq)
         nack.assert_called_once_with(requeue=False)
         ack.assert_not_called()
 
@@ -130,7 +137,7 @@ class TestRouterAppliesDlqBudget(unittest.TestCase):
         router.add_route("src", "in", "tgt", "out")
         tgt.publish.side_effect = RuntimeError("down")
         router.route("src", "in", b"x" * 11, ack_fn=MagicMock(), nack_fn=MagicMock())
-        dlq.publish.assert_not_called()
+        only_payload_free(dlq)
 
 
 if __name__ == "__main__":
