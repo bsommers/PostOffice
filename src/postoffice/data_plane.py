@@ -9,12 +9,35 @@ from collections import deque
 from typing import Any, Dict, Optional, Set, Tuple
 import threading
 from postoffice.app import PostOffice
+from postoffice.backoff import ExponentialBackoff
+from postoffice.ingress.content import scan_json
+from postoffice.ratelimit import TokenBucket
 from postoffice.signing import HmacSigner, as_envelope, verify_event, verify_state, verify_version
+from postoffice.validation import ACTIONS, PayloadError, validate_action
 
 logger = logging.getLogger(__name__)
 
 SIGNING_MODES = ("off", "observe", "enforce")
 LOG_INTERVAL = 10.0  # seconds between warnings of the same kind: rejections must not become a log flood
+DEFAULT_MAX_EVENT_BYTES = 256 * 1024
+DEFAULT_EVENT_RATE = 20.0    # events/s a worker will process; the rest are shed and recovered by resync
+DEFAULT_EVENT_BURST = 100.0
+RESYNC_BACKOFF_CAP = 30.0
+RESYNC_QUIET = 2 * RESYNC_BACKOFF_CAP  # no resync for this long resets the spacing
+# Structural bounds for a control message, checked by a linear scan before json.loads.
+MAX_MESSAGE_DEPTH = 16
+MAX_MESSAGE_KEYS = 10000
+MAX_MESSAGE_ARRAY = 10000
+
+
+def _env_number(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number") from None
 
 class DataPlane:
     """
@@ -29,7 +52,10 @@ class DataPlane:
     """
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
                  redis_password: Optional[str] = None, redis_tls: bool = False,
-                 signer: Optional[HmacSigner] = None, signing_mode: Optional[str] = None):
+                 signer: Optional[HmacSigner] = None, signing_mode: Optional[str] = None,
+                 max_event_bytes: Optional[int] = None, event_rate: Optional[float] = None,
+                 event_burst: Optional[float] = None, allowed_actions: Optional[Set[str]] = None,
+                 allow_clear_state: Optional[bool] = None):
         # No client-side retry: redis-py would otherwise reconnect and re-subscribe a dropped Pub/Sub
         # connection silently, hiding the gap. We want the error so we re-subscribe (confirmed) and
         # resync; snapshot reads have their own retry loop in sync_state.
@@ -42,6 +68,7 @@ class DataPlane:
         self.channel = "postoffice:config_updates"
         self._stop_event = threading.Event()
         self._init_convergence_state()
+        self._init_limits(max_event_bytes, event_rate, event_burst, allowed_actions, allow_clear_state)
         # Explicit signer wins; otherwise POSTOFFICE_EVENT_KEYS. A key means enforce unless told otherwise.
         self.signer = signer if signer is not None else HmacSigner.from_env()
         mode = signing_mode or os.environ.get("POSTOFFICE_EVENT_SIGNING_MODE") or (
@@ -60,7 +87,33 @@ class DataPlane:
     version_key = "postoffice:version"
     version_sigs_key = "postoffice:version_sigs"
 
+    def _init_limits(self, max_event_bytes: Optional[int] = None, event_rate: Optional[float] = None,
+                     event_burst: Optional[float] = None, allowed_actions: Optional[Set[str]] = None,
+                     allow_clear_state: Optional[bool] = None) -> None:
+        """Explicit arguments win over the environment, which wins over the defaults."""
+        self.max_event_bytes = int(max_event_bytes if max_event_bytes is not None else
+                                   _env_number("POSTOFFICE_MAX_EVENT_BYTES", DEFAULT_MAX_EVENT_BYTES))
+        rate = event_rate if event_rate is not None else _env_number("POSTOFFICE_EVENT_RATE", DEFAULT_EVENT_RATE)
+        burst = event_burst if event_burst is not None else _env_number("POSTOFFICE_EVENT_BURST", DEFAULT_EVENT_BURST)
+        if self.max_event_bytes <= 0:
+            raise ValueError("max_event_bytes must be > 0")
+        self._clock = time.monotonic
+        self._event_bucket = TokenBucket(rate, burst, clock=lambda: self._clock())
+        if allowed_actions is None and os.environ.get("POSTOFFICE_ALLOWED_ACTIONS", "").strip():
+            allowed_actions = {a.strip() for a in os.environ["POSTOFFICE_ALLOWED_ACTIONS"].split(",") if a.strip()}
+        self.allowed_actions = set(ACTIONS) if allowed_actions is None else set(allowed_actions)
+        unknown = self.allowed_actions - set(ACTIONS)
+        if unknown:
+            raise ValueError(f"Unknown control-plane actions: {', '.join(sorted(unknown))}")
+        # clear_state tears every broker down, so it needs its own opt-in on top of the allow-list.
+        self.allow_clear_state = (os.environ.get("ALLOW_CLEAR_STATE") == "1"
+                                  if allow_clear_state is None else allow_clear_state)
+
     def _init_convergence_state(self) -> None:
+        self._init_limits()
+        self._resync_backoff = ExponentialBackoff(base=1.0, factor=2.0, cap=RESYNC_BACKOFF_CAP, jitter="none")
+        self._next_resync_at = 0.0
+        self._last_resync_at = float("-inf")
         self._last_logged: Dict[str, float] = {}
         self._version: Optional[int] = None       # last Control Plane version reflected locally
         self._needs_resync = False
@@ -113,8 +166,28 @@ class DataPlane:
         now = time.monotonic()
         if now - self._last_logged.get(result, -LOG_INTERVAL) >= LOG_INTERVAL:
             self._last_logged[result] = now
+            what = what[:120].replace("\n", " ").replace("\r", " ")  # may name attacker-chosen keys
             logger.warning(f"Control-plane message {result}{' (' + what + ')' if what else ''} "
                            f"[mode={self.signing_mode}]")
+
+    # -- size and structure --------------------------------------------------------------------
+
+    def _too_big(self, raw) -> bool:
+        if isinstance(raw, str):
+            if len(raw) > self.max_event_bytes:
+                return True
+            if len(raw) * 4 <= self.max_event_bytes:
+                return False
+            return len(raw.encode("utf-8")) > self.max_event_bytes
+        return len(raw) > self.max_event_bytes
+
+    def _parse(self, text) -> Any:
+        """json.loads behind a linear structural scan, so hostile nesting cannot reach the parser."""
+        data = text.encode("utf-8") if isinstance(text, str) else text
+        problem = scan_json(data, MAX_MESSAGE_DEPTH, MAX_MESSAGE_KEYS, MAX_MESSAGE_ARRAY, self.max_event_bytes)
+        if problem:
+            raise ValueError(problem)
+        return json.loads(text)
 
     def _open_signed(self, raw: str, kind: str, hash_name: str = "", field: str = "") -> Optional[Dict[str, Any]]:
         """
@@ -122,7 +195,7 @@ class DataPlane:
         ``off`` accepts signed and unsigned alike (rolling upgrades); ``observe`` counts failures but
         still applies; ``enforce`` drops them.
         """
-        obj = json.loads(raw)
+        obj = self._parse(raw)
         env = as_envelope(obj)
         what = f"{hash_name}/{field}" if hash_name else "event"
         if env is None:
@@ -131,17 +204,20 @@ class DataPlane:
             self._control_event("unsigned", what)
             return obj if self.signing_mode == "observe" else None
         if self.signing_mode == "off":
-            return json.loads(env["payload"])
+            return self._parse(env["payload"])
         valid = verify_state(self.signer, hash_name, field, env) if kind == "state" else verify_event(self.signer, env)
         if valid:
-            return json.loads(env["payload"])
+            return self._parse(env["payload"])
         self._control_event("bad_signature", what)
-        return json.loads(env["payload"]) if self.signing_mode == "observe" else None
+        return self._parse(env["payload"]) if self.signing_mode == "observe" else None
 
     def _load_hash(self, hash_name: str) -> Dict[str, Dict[str, Any]]:
         """Reads a state hash, dropping entries that fail verification or cannot be parsed."""
         entries: Dict[str, Dict[str, Any]] = {}
         for field, raw in self.r.hgetall(hash_name).items():
+            if self._too_big(raw):
+                self._control_event("oversize", f"{hash_name}/{field}")
+                continue
             try:
                 config = self._open_signed(raw, "state", hash_name, field)
             except (ValueError, KeyError) as e:
@@ -273,15 +349,17 @@ class DataPlane:
 
                 # One bad entry (e.g. a rejected broker that a route refers to) must not block the rest.
                 for name, config in self._load_hash("postoffice:brokers").items():
-                    self._apply_entry("broker", name, lambda: self._apply_broker(name, config))
+                    data = {**config, "name": name} if isinstance(config, dict) else config
+                    self._apply_entry("broker", name, "add_broker", data, lambda: self._apply_broker(name, config))
                 for field, config in self._load_hash("postoffice:routes").items():
-                    self._apply_entry("route", field, lambda: self.po.add_route(
+                    self._apply_entry("route", field, "add_route", config, lambda: self.po.add_route(
                         config["source_broker"], config["source_topic"],
                         config["target_broker"], config["target_topic"],
                         **config["target_kwargs"]))
                 for field, config in self._load_hash("postoffice:subscriptions").items():
-                    self._apply_entry("subscription", field, lambda: self._apply_subscription(
-                        config["broker_name"], config["topic"], config["kwargs"]))
+                    self._apply_entry("subscription", field, "add_subscription", config,
+                                      lambda: self._apply_subscription(
+                                          config["broker_name"], config["topic"], config["kwargs"]))
                 self._version = snapshot_version
                 self._synced_once = True
                 break
@@ -293,20 +371,40 @@ class DataPlane:
                 logger.warning(f"Failed to sync state ({e}). Retrying in {retry_delay}s (attempt {attempt}/{max_retries})...")
                 self._stop_event.wait(retry_delay)
 
-    @staticmethod
-    def _apply_entry(kind: str, name: str, apply) -> None:
+    def _apply_entry(self, kind: str, name: str, action: str, data: Any, apply) -> None:
         try:
+            validate_action(action, data)
             apply()
         except (redis.ConnectionError, redis.TimeoutError):
             raise
+        except PayloadError as e:
+            self._control_event("invalid", f"{kind} '{name}': {e}")
+            logger.error(f"Skipping {kind} '{name[:80]}' during sync: {e}")
         except Exception as e:
             logger.error(f"Skipping {kind} '{name}' during sync: {e}")
 
     def resync(self) -> None:
         """Re-reads the full snapshot (after a reconnect, a version gap or an unknown-entity update)."""
         self._needs_resync = False
+        now = self._clock()
+        if now - self._last_resync_at > RESYNC_QUIET:
+            self._resync_backoff.reset()
+        self._last_resync_at = now
+        self._next_resync_at = now + self._resync_backoff.next()
         logger.info("Resyncing state from Control Plane...")
         self.sync_state()
+
+    def _resync_due(self) -> bool:
+        return self._clock() >= self._next_resync_at
+
+    def _maybe_resync(self) -> None:
+        """
+        Resyncs if one is wanted and the spacing allows it. A flood of bad or shed events therefore
+        costs at most one snapshot read per (growing) interval. A deferred resync is retried on the
+        next message; the snapshot is authoritative, so waiting never loses state, it only delays it.
+        """
+        if self._needs_resync and self._resync_due():
+            self.resync()
 
     # -- live updates --------------------------------------------------------------------------
 
@@ -326,16 +424,55 @@ class DataPlane:
         self._version = version
         return True
 
+    def _action_allowed(self, action: Any) -> bool:
+        if action not in self.allowed_actions:
+            return False
+        return action != "clear_state" or self.allow_clear_state
+
+    def _admit(self, raw) -> Optional[Dict[str, Any]]:
+        """
+        Size, rate, signature and shape checks, cheapest first. Returns the decoded event, or None
+        when it was dropped (counted). Size and rate come before any parsing or HMAC work.
+        """
+        if self._too_big(raw):
+            self._control_event("oversize")
+            return None
+        if not self._event_bucket.try_consume():
+            # Shedding leaves a hole in the version sequence: recover it from the snapshot.
+            self._control_event("rate_limited")
+            self._needs_resync = True
+            return None
+        try:
+            payload = self._open_signed(raw, "event")
+        except ValueError:
+            self._control_event("invalid", "undecodable event")
+            return None
+        if payload is None:
+            return None
+        if not isinstance(payload, dict):
+            self._control_event("invalid", "event is not an object")
+            return None
+        return payload
+
     def _process_update_message(self, message):
         """Processes an individual Pub/Sub configuration update message."""
         if message and message.get('type') == 'message':
             try:
-                payload = self._open_signed(message['data'], "event")
+                payload = self._admit(message['data'])
                 if payload is None:
                     return
                 action = payload.get("action")
                 data = payload.get("data", {})
+                # Ordering first: an event we refuse below still holds its place in the sequence.
                 if not self._accept_version(payload.get("version")):
+                    return
+                if not self._action_allowed(action):
+                    self._control_event("forbidden_action", action if action in ACTIONS else "unknown")
+                    return
+                try:
+                    validate_action(action, data)
+                except PayloadError as e:
+                    self._control_event("invalid", f"{action}: {e}")
                     return
                 self._control_event("applied")
 
@@ -388,8 +525,7 @@ class DataPlane:
                     self._subscribe_and_buffer()
                     self._drain_buffer()
                     self._pubsub_ready = False
-                if self._needs_resync:
-                    self.resync()
+                self._maybe_resync()
                 logger.info(f"Subscribed to {self.channel} for live config updates.")
                 delay = 1.0  # Reset delay on successful connection
 
@@ -397,8 +533,7 @@ class DataPlane:
                     if self._stop_event.is_set():
                         break
                     self._process_update_message(message)
-                    if self._needs_resync:
-                        self.resync()
+                    self._maybe_resync()
             except (redis.ConnectionError, redis.TimeoutError) as e:
                 if self._stop_event.is_set():
                     break

@@ -16,7 +16,7 @@ def inject_test_config():
         redis_tls=os.environ.get("REDIS_TLS") == "1",
     )
 
-    print("Clearing old state...")
+    print("Clearing old state (running workers ignore this unless started with ALLOW_CLEAR_STATE=1)...")
     cp.clear_state()
 
     print("\n--- Injecting Brokers ---")

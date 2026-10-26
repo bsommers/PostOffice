@@ -1,6 +1,6 @@
 # D9 Scoping: Control-plane hardening
 
-Status: scoped 2026-10-25. **Decisions 1-6 accepted as recommended** (user: "go with recommendations"). D9a DONE; D9b-D9d open. See section 7.
+Status: scoped 2026-10-25. **Decisions 1-6 accepted as recommended** (user: "go with recommendations"). D9a, D9b DONE; D9c-D9d open. See section 7.
 Prerequisites now done: T5 (Redis password/TLS, loopback metrics, skip-verify warnings; `6f4e118`), T7 (subscribe-before-snapshot, idempotent sync, versioned events, resync; `830fcd0`). Threat I in `DOS_PROTECTION_PLAN.md`.
 
 ## 1. What an attacker with Redis access can do today
@@ -86,3 +86,18 @@ Design changes from the scoping text above:
 Tests: `tests/test_control_signing.py` (35, in-memory) plus `TestSignedControlPlane` in `tests/integration/` (5, real Redis: signed round trip, state written straight into Redis rejected, forged version counter, forged vs genuine live events, wrong-key worker).
 
 Known gaps / follow-ups: no key hot-reload (restart to rotate); `ControlPlane` still reads keys from the environment implicitly when no signer is passed; secrets inside `security_config` remain readable at rest by anyone who can read Redis (signing gives integrity, not confidentiality).
+
+### D9b: Event limits and payload validation (DONE)
+Implemented: `postoffice/validation.py` (`validate_action`, `PayloadError`, `plugin_kwargs`), `ingress.content.scan_json` (the D5 scan extracted so both use one implementation), and in `DataPlane`: size cap, token-bucket rate limit, action allow-list, validation, resync spacing.
+
+Pipeline per live event, cheapest first: size (before any parse) -> rate -> signature + structural scan + parse -> version order -> allow-list -> validation -> apply. New `postoffice_control_events_total{result}` values: `oversize`, `rate_limited`, `forbidden_action`, `invalid`.
+- Config (argument, else env, else default): `max_event_bytes`/`POSTOFFICE_MAX_EVENT_BYTES` 256 KiB; `event_rate`/`POSTOFFICE_EVENT_RATE` 20 per s; `event_burst`/`POSTOFFICE_EVENT_BURST` 100; `allowed_actions`/`POSTOFFICE_ALLOWED_ACTIONS` (comma list, unknown names are a startup error); `allow_clear_state`/`ALLOW_CLEAR_STATE=1`.
+- **Behaviour change:** workers ignore `clear_state` unless `ALLOW_CLEAR_STATE=1`. `scripts/admin.py` prints a note. The two existing clear_state test modules opt in explicitly.
+- Stored state gets the same size cap and validation (a bad entry is skipped and counted `invalid`, the rest of the snapshot still loads).
+- Broker kwargs are checked against the plugin constructor signatures along the class hierarchy (plus `security_config`, `circuit_breaker_*`); scalar types come from annotations or defaults, so `port` must be an int and `True` is rejected. Topics: non-empty, no NUL, <= 256 chars, <= 16 levels (same defaults as `TopicShape`). Names: `[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}`. Error messages and logs name keys and types, never values.
+- Events refused for `forbidden_action` or `invalid` still advance the version, so they do not cause a spurious gap resync.
+- Shed events set `_needs_resync`; resyncs triggered from the listener are spaced by `ExponentialBackoff` (1 s doubling to 30 s, reset after 60 s quiet). Direct `resync()` calls from `_converge` are not delayed.
+
+Known gaps: a deferred resync is retried on the *next* message, so if the last event of a burst is shed and nothing follows, the worker stays behind until the next event (a timer thread would fix this but needs locking around apply; not done). The rate limit also applies to the buffered events replayed after a snapshot, which a legitimate burst over 100 will trip; it recovers by resync. Key-name length of `target_kwargs` is bounded (64) but values are not type-checked.
+
+Tests: `tests/test_control_limits.py` (43, hermetic). Suite 448 OK; integration tier 12 OK against real Redis.

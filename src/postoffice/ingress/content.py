@@ -21,6 +21,38 @@ _OPEN, _CLOSE = (ord("{"), ord("[")), (ord("}"), ord("]"))
 _BRACKET, _COLON, _COMMA = ord("["), ord(":"), ord(",")
 
 
+def scan_json(data: bytes, max_depth: int, max_keys: int, max_array_length: int,
+              max_string_length: int) -> Optional[str]:
+    """Bounds JSON in one linear pass *before* ``json.loads``. Returns the first violation or None."""
+    depth = keys = 0
+    stack: List[int] = []  # -1 for an object, else the comma count of an array
+    for m in _TOKEN.finditer(data):
+        kind = m.lastgroup
+        if kind == "str":
+            if m.end() - m.start() - 2 > max_string_length:
+                return f"string length > {max_string_length}"
+        elif kind == "punct":
+            c = data[m.start()]
+            if c in _OPEN or c == _BRACKET:
+                depth += 1
+                if depth > max_depth:
+                    return f"depth > {max_depth}"
+                stack.append(0 if c == _BRACKET else -1)
+            elif c in _CLOSE:
+                depth = max(0, depth - 1)
+                if stack:
+                    stack.pop()
+            elif c == _COLON:
+                keys += 1
+                if keys > max_keys:
+                    return f"keys > {max_keys}"
+            elif c == _COMMA and stack and stack[-1] >= 0:
+                stack[-1] += 1
+                if stack[-1] >= max_array_length:
+                    return f"array length > {max_array_length}"
+    return None
+
+
 class ContentGuard(Rule):
     """
     Application-aware payload checks for one topic pattern; other topics cost a pattern match.
@@ -108,33 +140,7 @@ class ContentGuard(Rule):
             return None, f"invalid json: {e}"
 
     def _scan(self, data: bytes) -> Optional[str]:
-        depth = keys = 0
-        stack: List[int] = []  # -1 for an object, else the comma count of an array
-        for m in _TOKEN.finditer(data):
-            kind = m.lastgroup
-            if kind == "str":
-                if m.end() - m.start() - 2 > self.max_string_length:
-                    return f"string length > {self.max_string_length}"
-            elif kind == "punct":
-                c = data[m.start()]
-                if c in _OPEN or c == _BRACKET:
-                    depth += 1
-                    if depth > self.max_depth:
-                        return f"depth > {self.max_depth}"
-                    stack.append(0 if c == _BRACKET else -1)
-                elif c in _CLOSE:
-                    depth = max(0, depth - 1)
-                    if stack:
-                        stack.pop()
-                elif c == _COLON:
-                    keys += 1
-                    if keys > self.max_keys:
-                        return f"keys > {self.max_keys}"
-                elif c == _COMMA and stack and stack[-1] >= 0:
-                    stack[-1] += 1
-                    if stack[-1] >= self.max_array_length:
-                        return f"array length > {self.max_array_length}"
-        return None
+        return scan_json(data, self.max_depth, self.max_keys, self.max_array_length, self.max_string_length)
 
     @staticmethod
     def _lookup(record: Any, path: str) -> Tuple[bool, Any]:

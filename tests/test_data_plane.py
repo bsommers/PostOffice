@@ -52,7 +52,7 @@ class TestDataPlane(unittest.TestCase):
         self.fake_redis = FakeRedis()
         self.patcher = patch('postoffice.data_plane.redis.Redis', return_value=self.fake_redis)
         self.patcher.start()
-        self.dp = DataPlane(redis_host='mock_host', redis_port=6379)
+        self.dp = DataPlane(redis_host='mock_host', redis_port=6379, allow_clear_state=True)
 
     def tearDown(self):
         self.dp._stop_event.set()

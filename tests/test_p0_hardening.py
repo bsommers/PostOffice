@@ -27,7 +27,7 @@ class TestResetAndClearState(unittest.TestCase):
     @patch("postoffice.plugins.mqtt_client.mqtt.Client")
     @patch("postoffice.data_plane.redis.Redis")
     def test_clear_state_restarts_metrics_server(self, _mock_redis, _mock_mqtt):
-        dp = DataPlane(redis_host="mock")
+        dp = DataPlane(redis_host="mock", allow_clear_state=True)
         dp.po.set_metrics_port(0)
         manager = dp.po.metrics_manager
         with patch.object(manager, "start_server") as start_server, \
@@ -41,7 +41,7 @@ class TestResetAndClearState(unittest.TestCase):
 
     @patch("postoffice.data_plane.redis.Redis")
     def test_clear_state_on_stopped_worker_stays_stopped(self, _mock_redis):
-        dp = DataPlane(redis_host="mock")
+        dp = DataPlane(redis_host="mock", allow_clear_state=True)
         dp._process_update_message(
             {"type": "message", "data": json.dumps({"action": "clear_state", "data": {}})}
         )
@@ -53,7 +53,7 @@ class TestResetAndClearState(unittest.TestCase):
     def test_data_plane_clear_state_then_add_broker_connects(
         self, _mock_redis, _mock_mqtt, mock_connect
     ):
-        dp = DataPlane(redis_host="mock")
+        dp = DataPlane(redis_host="mock", allow_clear_state=True)
         dp.po.start()
         mock_connect.reset_mock()
 
