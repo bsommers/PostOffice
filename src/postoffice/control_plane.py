@@ -11,6 +11,8 @@ class ControlPlane:
     State is saved to Redis, and changes are broadcasted via Pub/Sub so that
     any number of DataPlane workers can sync rules without restarting.
     """
+    version_key = "postoffice:version"
+
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
                  redis_password: Optional[str] = None, redis_tls: bool = False):
         self.r = redis.Redis(
@@ -20,7 +22,9 @@ class ControlPlane:
         self.channel = "postoffice:config_updates"
 
     def _publish_update(self, action: str, data: dict):
-        payload = json.dumps({"action": action, "data": data})
+        # State is already written; bump the version, then announce it so workers can detect gaps.
+        version = self.r.incr(self.version_key)
+        payload = json.dumps({"action": action, "data": data, "version": version})
         self.r.publish(self.channel, payload)
         # Log only the action and entity name: payloads can carry credentials (security_config).
         logger.info(f"Published update: {action} ({data.get('name') or data.get('broker_name') or data.get('source_broker') or '-'})")

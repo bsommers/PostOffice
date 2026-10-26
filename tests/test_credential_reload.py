@@ -163,6 +163,7 @@ class TestDistributedCredentialReload(unittest.TestCase):
         # 1. Setup ControlPlane with mocked Redis
         cp = ControlPlane.__new__(ControlPlane)
         cp.r = MagicMock()
+        cp.r.incr.return_value = 1
         cp.channel = "postoffice:config_updates"
 
         existing_broker_json = json.dumps({
@@ -176,6 +177,7 @@ class TestDistributedCredentialReload(unittest.TestCase):
 
         # 2. Setup DataPlane with live PostOffice instance and registered broker
         dp = DataPlane.__new__(DataPlane)
+        dp._init_convergence_state()
         dp.r = MagicMock()
         dp.po = PostOffice()
         dp.channel = "postoffice:config_updates"

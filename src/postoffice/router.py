@@ -409,6 +409,11 @@ class Router:
         key = (source_client, source_topic)
         if key not in self.routes:
             self.routes[key] = []
+        candidate = {"target_client": target_client, "target_topic": target_topic, **target_kwargs}
+        if candidate in self.routes[key]:
+            # Replays (control-plane resync, retried sync) must not fan a message out twice.
+            logger.debug(f"Route {source_client}/{source_topic} -> {target_client}/{target_topic} already present")
+            return
         if self.max_routes_per_topic is not None and len(self.routes[key]) >= self.max_routes_per_topic:
             raise ValueError(
                 f"Route limit reached for {source_client}/{source_topic} "

@@ -25,6 +25,10 @@ class FakeRedis:
                 deleted_count += 1
         return deleted_count
 
+    def incr(self, key):
+        self.version = getattr(self, 'version', 0) + 1
+        return self.version
+
     def publish(self, channel, message):
         self.published_messages.append((channel, message))
         return 1

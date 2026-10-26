@@ -74,6 +74,7 @@ class TestSecureMesh(unittest.TestCase):
     def test_control_plane_security_serialization(self):
         cp = ControlPlane.__new__(ControlPlane)
         cp.r = MagicMock()
+        cp.r.incr.return_value = 1
         cp.channel = "postoffice:config_updates"
 
         sec = SecurityConfig(
@@ -130,6 +131,7 @@ class TestSecureMesh(unittest.TestCase):
         ]
 
         dp = DataPlane.__new__(DataPlane)
+        dp._init_convergence_state()
         dp.r = mock_redis
         dp.po = PostOffice()
         dp.channel = "postoffice:config_updates"

@@ -143,6 +143,7 @@ class TestSecretsNotLogged(unittest.TestCase):
         cp = ControlPlane(redis_host="mock")
         cfg = SecurityConfig(username="u", password=SECRET, client_key_password=SECRET)
         cp.r.hget.return_value = None
+        cp.r.incr.return_value = 1
         with self.assertLogs("postoffice.control_plane", level="DEBUG") as logs:
             cp.register_broker("amqp_1", "amqp", security_config=cfg)
             cp.update_broker_security("amqp_1", cfg)

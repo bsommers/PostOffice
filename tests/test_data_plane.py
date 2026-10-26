@@ -31,6 +31,9 @@ class FakeRedis:
     def hgetall(self, name):
         return self.hashes.get(name, {})
 
+    def get(self, key):
+        return None
+
     def pubsub(self):
         return FakePubSub(self._pubsub_messages)
 

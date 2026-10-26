@@ -180,6 +180,18 @@ class PostOffice:
             except Exception as e:
                 logger.error(f"Failed to dynamically connect broker '{name}': {e}")
 
+    def remove_broker(self, name: str) -> bool:
+        """Disconnects and unregisters a broker (routes naming it are kept). Returns False if unknown."""
+        client = self.brokers.pop(name, None)
+        if client is None:
+            return False
+        try:
+            client.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting broker '{name}' during removal: {e}")
+        self.router.clients.pop(name, None)
+        return True
+
     def add_route(self, source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None:
         """
         Configures a route between two registered brokers.
