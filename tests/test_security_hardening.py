@@ -50,6 +50,12 @@ class TestRedisAuth(unittest.TestCase):
             self.assertEqual(kwargs["password"], "s3cret")
             self.assertTrue(kwargs["ssl"])
 
+    def test_data_plane_disables_silent_redis_retries(self):
+        with patch("postoffice.data_plane.redis.Redis") as redis_cls:
+            DataPlane()
+        retry = redis_cls.call_args.kwargs["retry"]
+        self.assertEqual(retry.get_retries(), 0)  # a dropped Pub/Sub link must surface as an error
+
     def test_defaults_stay_unauthenticated_plaintext_for_local_dev(self):
         with patch("postoffice.control_plane.redis.Redis") as redis_cls:
             ControlPlane()

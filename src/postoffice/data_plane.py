@@ -1,5 +1,7 @@
 import json
 import redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 import logging
 import time
 from collections import deque
@@ -22,9 +24,12 @@ class DataPlane:
     """
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
                  redis_password: Optional[str] = None, redis_tls: bool = False):
+        # No client-side retry: redis-py would otherwise reconnect and re-subscribe a dropped Pub/Sub
+        # connection silently, hiding the gap. We want the error so we re-subscribe (confirmed) and
+        # resync; snapshot reads have their own retry loop in sync_state.
         self.r = redis.Redis(
             host=redis_host, port=redis_port, password=redis_password, ssl=redis_tls,
-            decode_responses=True,
+            decode_responses=True, retry=Retry(NoBackoff(), 0), retry_on_error=[],
         )
         self.po = PostOffice()
         self.pubsub = self.r.pubsub()
