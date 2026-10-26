@@ -14,14 +14,28 @@ BROKERS, ROUTES, SUBS, VERSION = (
 
 
 class FakePubSub:
-    def __init__(self, bus):
+    def __init__(self, bus, ack_delay=0):
         self.bus = bus
         self.queue = deque()
         self.fail_listen = None
+        self.ack_delay = ack_delay  # get_message() polls that return nothing before the server confirms
+        self._acked = False
 
     def subscribe(self, channel):
         self.bus.calls.append("subscribe")
         self.bus.pubsubs.append(self)
+
+    def get_message(self, timeout=0, ignore_subscribe_messages=False):
+        if not self._acked:
+            if self.ack_delay > 0:
+                self.ack_delay -= 1
+                return None
+            self._acked = True
+            self.bus.calls.append("ack")
+            return {"type": "subscribe"}
+        if self.queue:
+            return {"type": "message", "data": self.queue.popleft()}
+        return None
 
     def listen(self):
         if self.fail_listen:
@@ -39,6 +53,7 @@ class FakeBus:
         self.on_hgetall = None
         self.on_listen_exhausted = lambda: None
         self.fail_hgetall_once = {}
+        self.ack_delay = 0
 
     def hset(self, name, key, value):
         self.hashes.setdefault(name, {})[key] = value
@@ -65,7 +80,7 @@ class FakeBus:
             ps.queue.append(payload)
 
     def pubsub(self):
-        return FakePubSub(self)
+        return FakePubSub(self, ack_delay=self.ack_delay)
 
 
 def event(action, data, version=None):
@@ -114,9 +129,68 @@ class TestSubscribeBeforeSnapshot(Base):
             self.dp.run()
         self.assertLess(self.bus.calls.index("subscribe"), self.bus.calls.index(f"hgetall:{BROKERS}"))
 
+    def test_snapshot_waits_for_the_server_to_confirm_the_subscription(self):
+        self.seed()
+        self.bus.ack_delay = 3
+        with patch.object(self.dp, "_listen_for_updates"):
+            self.dp.run()
+        self.assertLess(self.bus.calls.index("ack"), self.bus.calls.index(f"hgetall:{BROKERS}"))
+
+    def test_unconfirmed_subscription_times_out_instead_of_snapshotting_blind(self):
+        self.seed()
+        self.bus.ack_delay = 10 ** 9
+        with self.assertRaises(redis.TimeoutError):
+            self.dp._subscribe_and_buffer(ack_timeout=0.05)
+        self.assertNotIn(f"hgetall:{BROKERS}", self.bus.calls)
+
+    def test_events_during_snapshot_are_applied_in_order_after_it(self):
+        self.seed(routes=False)
+        self.dp._subscribe_and_buffer()
+        self.dp.sync_state()
+        for i in range(3):
+            self.bus.publish("c", event("add_route", json.loads(route_cfg(dt=f"out{i}")), version=i + 1))
+        self.dp._drain_buffer()
+        self.assertEqual([r["target_topic"] for r in self.dp.po.router.routes[("b1", "in")]],
+                         ["out0", "out1", "out2"])
+
+    def test_buffer_overflow_falls_back_to_a_full_resync(self):
+        self.seed(routes=False)
+        self.dp.max_buffered = 2
+        self.dp._subscribe_and_buffer()
+        self.dp.sync_state()
+        for i in range(5):
+            self.bus.hset(ROUTES, f"r{i}", route_cfg(dt=f"out{i}"))
+            self.bus.publish("c", event("add_route", json.loads(route_cfg(dt=f"out{i}")), version=i + 1))
+        self.dp._drain_buffer()
+        self.assertTrue(self.dp._needs_resync)
+        self.dp.resync()
+        self.assertEqual(self.route_count(), 5)  # nothing lost even though events were shed
+
+    def test_endless_event_stream_cannot_stall_the_drain(self):
+        class Firehose:
+            def get_message(self, timeout=0, ignore_subscribe_messages=False):
+                return {"type": "message", "data": event("add_route", json.loads(route_cfg()))}
+        self.dp.max_buffered = 5
+        self.dp.pubsub = Firehose()
+        self.dp._buffering.set()
+        self.dp._drain_buffer()  # must return rather than read forever
+        self.assertTrue(self.dp._needs_resync)
+
+    def test_reader_thread_is_stopped_after_draining(self):
+        self.dp._subscribe_and_buffer()
+        self.assertTrue(self.dp._buffer_thread.is_alive())
+        self.dp._drain_buffer()
+        self.assertIsNone(self.dp._buffer_thread)
+
+    def test_failed_snapshot_does_not_leak_the_reader_thread(self):
+        self.bus.fail_hgetall_once[BROKERS] = True
+        with self.assertRaises(redis.ConnectionError):
+            self.dp._converge(max_retries=1)
+        self.assertIsNone(self.dp._buffer_thread)
+
     def test_event_published_during_snapshot_is_applied(self):
         self.seed(routes=False)
-        self.dp._subscribe()
+        self.dp._subscribe_and_buffer()
 
         def publish_mid_snapshot(name):
             if name == BROKERS:  # after brokers were read, before routes
@@ -124,7 +198,7 @@ class TestSubscribeBeforeSnapshot(Base):
                 self.bus.publish("c", event("add_route", json.loads(route_cfg()), version=1))
         self.bus.on_hgetall = publish_mid_snapshot
         self.dp.sync_state()
-        self.dp._listen_for_updates()
+        self.dp._drain_buffer()
         self.assertEqual(self.route_count(), 1)  # applied once: snapshot and event agree
 
 
@@ -192,8 +266,9 @@ class TestResync(Base):
 
     def test_first_listener_connection_after_run_does_not_resync(self):
         self.seed()
-        self.dp._subscribe()
+        self.dp._subscribe_and_buffer()
         self.dp.sync_state()
+        self.dp._drain_buffer()
         before = self.bus.calls.count(f"hgetall:{BROKERS}")
         self.dp._listen_for_updates()
         self.assertEqual(self.bus.calls.count(f"hgetall:{BROKERS}"), before)
@@ -201,8 +276,9 @@ class TestResync(Base):
     def test_version_gap_triggers_resync(self):
         self.seed(routes=False)
         self.bus.kv[VERSION] = 3
-        self.dp._subscribe()
+        self.dp._subscribe_and_buffer()
         self.dp.sync_state()
+        self.dp._drain_buffer()
         self.bus.hset(ROUTES, "v4", route_cfg())  # the v4 event was lost
         self.bus.publish("c", event("add_subscription", {"broker_name": "b1", "topic": "t", "kwargs": {}},
                                     version=5))

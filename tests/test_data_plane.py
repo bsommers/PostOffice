@@ -13,6 +13,12 @@ class FakePubSub:
     def subscribe(self, channel):
         self.subscribed_channels.append(channel)
 
+    def get_message(self, timeout=0, ignore_subscribe_messages=False):
+        if not getattr(self, '_acked', False):
+            self._acked = True
+            return {'type': 'subscribe'}
+        return None
+
     def listen(self):
         for msg in self.messages:
             yield msg
@@ -145,6 +151,7 @@ class TestDataPlane(unittest.TestCase):
     def test_listen_for_updates_reconnect_loop(self):
         # Create a mock Redis that fails on first pubsub listen attempt, then succeeds
         mock_pubsub = MagicMock()
+        mock_pubsub.get_message.return_value = {'type': 'subscribe'}  # a real server always confirms
         first_call = True
 
         def mock_listen():

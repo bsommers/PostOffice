@@ -1,6 +1,8 @@
 import json
 import redis
 import logging
+import time
+from collections import deque
 from typing import Any, Dict, Optional, Set, Tuple
 import threading
 from postoffice.app import PostOffice
@@ -36,6 +38,11 @@ class DataPlane:
         self._version: Optional[int] = None       # last Control Plane version reflected locally
         self._needs_resync = False
         self._pubsub_ready = False                # run() already subscribed this pubsub
+        self.max_buffered = 10000                 # events held while the snapshot is read
+        self._buffer: deque = deque()
+        self._buffer_overflow = False
+        self._buffering = threading.Event()
+        self._buffer_thread: Optional[threading.Thread] = None
         self._synced_once = False
         self._brokers_applied: Dict[str, str] = {}
         self._subs_applied: Set[Tuple[str, str, str]] = set()
@@ -75,11 +82,96 @@ class DataPlane:
         raw = self.r.get(self.version_key)
         return int(raw) if raw is not None else 0
 
-    def _subscribe(self) -> None:
-        """Opens the Pub/Sub subscription; call before sync_state so mid-snapshot events queue up."""
+    def _await_subscribe_ack(self, timeout: float) -> None:
+        """Blocks until the server confirms the SUBSCRIBE; only then do events published after it reach us."""
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise redis.TimeoutError(f"No subscribe confirmation for {self.channel} within {timeout}s")
+            message = self.pubsub.get_message(timeout=min(remaining, 0.1))
+            if message is not None and message.get("type") == "subscribe":
+                return
+
+    def _subscribe_and_buffer(self, ack_timeout: float = 5.0) -> None:
+        """
+        Opens the Pub/Sub subscription, waits for the server to confirm it, then keeps reading it
+        into a bounded in-memory buffer. Call before the snapshot: anything published from this
+        point on is either in the snapshot or in the buffer. Reading continuously also keeps
+        Redis from disconnecting us for exceeding its subscriber output-buffer limit.
+        """
         self.pubsub = self.r.pubsub()
         self.pubsub.subscribe(self.channel)
+        self._await_subscribe_ack(ack_timeout)
+        self._buffer = deque()
+        self._buffer_overflow = False
+        self._buffering.set()
+        self._buffer_thread = threading.Thread(target=self._buffer_reader, daemon=True)
+        self._buffer_thread.start()
         self._pubsub_ready = True
+
+    def _buffer_message(self, message) -> None:
+        if message is None or message.get("type") != "message":
+            return
+        if len(self._buffer) >= self.max_buffered:
+            self._buffer_overflow = True  # shed; the caller resyncs from the snapshot instead
+            return
+        self._buffer.append(message)
+
+    def _buffer_reader(self) -> None:
+        while self._buffering.is_set():
+            try:
+                message = self.pubsub.get_message(timeout=0.05)
+            except Exception as e:
+                logger.warning(f"Event buffer reader stopped: {e}")
+                self._buffer_overflow = True  # unknown what was missed: force a resync
+                return
+            if message is None:
+                time.sleep(0.001)
+            else:
+                self._buffer_message(message)
+
+    def _stop_buffering(self) -> None:
+        self._buffering.clear()
+        thread, self._buffer_thread = self._buffer_thread, None
+        if thread is not None:
+            thread.join(timeout=2.0)
+        try:
+            # Sweep what already reached the socket but the reader had not picked up. Bounded: a
+            # stream arriving as fast as we read must not keep us here forever; treat it as overflow.
+            for _ in range(self.max_buffered + 1):
+                message = self.pubsub.get_message(timeout=0)
+                if message is None:
+                    break
+                self._buffer_message(message)
+            else:
+                self._buffer_overflow = True
+        except Exception as e:
+            logger.warning(f"Error draining event buffer: {e}")
+            self._buffer_overflow = True
+
+    def _drain_buffer(self) -> None:
+        """Applies the events buffered during the snapshot, in order (or flags a resync if any were shed)."""
+        self._stop_buffering()
+        if self._buffer_overflow:
+            logger.warning("Event buffer overflowed while syncing; falling back to a full resync")
+            self._buffer.clear()
+            self._needs_resync = True
+            return
+        while self._buffer:
+            self._process_update_message(self._buffer.popleft())
+
+    def _converge(self, max_retries: int = 5) -> None:
+        """subscribe -> snapshot -> buffered events. The order is what prevents lost updates."""
+        self._subscribe_and_buffer()
+        try:
+            self.sync_state(max_retries=max_retries)
+        except BaseException:
+            self._stop_buffering()
+            raise
+        self._drain_buffer()
+        if self._needs_resync:
+            self.resync()
 
     def sync_state(self, max_retries: int = 5, retry_delay: float = 1.0):
         """Fetches the latest state from Redis to catch up. Safe to repeat: applying is idempotent."""
@@ -195,11 +287,15 @@ class DataPlane:
             try:
                 if self._pubsub_ready:
                     self._pubsub_ready = False  # run() subscribed and synced already
-                else:
-                    self._subscribe()
+                elif self._synced_once:
+                    self._converge()  # events may have been missed while disconnected
                     self._pubsub_ready = False
-                    if self._synced_once:
-                        self.resync()  # events may have been missed while disconnected
+                else:
+                    self._subscribe_and_buffer()
+                    self._drain_buffer()
+                    self._pubsub_ready = False
+                if self._needs_resync:
+                    self.resync()
                 logger.info(f"Subscribed to {self.channel} for live config updates.")
                 delay = 1.0  # Reset delay on successful connection
 
@@ -224,8 +320,7 @@ class DataPlane:
 
     def run(self):
         """Starts the worker, syncing state and listening for changes indefinitely."""
-        self._subscribe()  # before the snapshot, so nothing published during it is lost
-        self.sync_state()
+        self._converge()  # subscribe (confirmed) before the snapshot, so nothing published during it is lost
         self.po.start()
 
         listener_thread = threading.Thread(target=self._listen_for_updates)
