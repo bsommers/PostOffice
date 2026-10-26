@@ -1,6 +1,6 @@
 # D9 Scoping: Control-plane hardening
 
-Status: scoped 2026-10-25, **awaiting the decisions in section 5** before implementation.
+Status: scoped 2026-10-25. **Decisions 1-6 accepted as recommended** (user: "go with recommendations"). D9a DONE; D9b-D9d open. See section 7.
 Prerequisites now done: T5 (Redis password/TLS, loopback metrics, skip-verify warnings; `6f4e118`), T7 (subscribe-before-snapshot, idempotent sync, versioned events, resync; `830fcd0`). Threat I in `DOS_PROTECTION_PLAN.md`.
 
 ## 1. What an attacker with Redis access can do today
@@ -70,3 +70,19 @@ Redis auth/TLS (T5) is the primary control for 1–5. D9 is defence in depth for
 - D9a changes the wire format (`kid`, `sig`, wrapped hash values). Mixed old/new workers during a rolling upgrade: `off` mode must keep accepting unsigned events and must read both the old and the wrapped hash formats.
 - D9b's kwargs allow-list derived from plugin signatures breaks any worker that relied on passing extra keys through `**kwargs` to `BaseClient`. The plugin tests will show which keys are in real use.
 - Everything here assumes Redis is the only channel. A compromised **control plane** holding the key can still do anything; signing protects the transport and storage, not the signer.
+
+## 7. Progress log
+
+### D9a: Signed events and state (DONE)
+Implemented: `postoffice/signing.py` (`HmacSigner`, `POSTOFFICE_EVENT_KEYS="kid:secret,..."`, first key signs, all verify, keys must be >= 16 bytes), `ControlPlane(signer=)` seals events and stored hash entries, `DataPlane(signer=, signing_mode=)` verifies (`POSTOFFICE_EVENT_SIGNING_MODE` overrides; default `enforce` with a key, `off` without plus a startup WARNING), metric `postoffice_control_events_total{result}` with `applied|stale|gap|unsigned|bad_signature|bad_version|invalid`, rejection warnings throttled to one per kind per 10 s and never containing payloads.
+
+Design changes from the scoping text above:
+- **Signatures cover the exact payload bytes as transmitted**, not canonical JSON. Envelope is `{"kid","sig","payload"}` where `payload` is the JSON string. Any language verifies with plain HMAC-SHA256 over the received bytes, which matters for the native/polyglot plan (no cross-language JSON canonicalisation).
+- **Domain separation**: `event\0`, `state\0<hash>\0<field>\0` and `version\0` prefixes. A stored entry cannot be replayed as an event, nor moved to another field or hash.
+- **Version counter** is protected by a signature per counter value in `postoffice:version_sigs` (last 1000 kept). A counter without a valid signature is not trusted: the worker keeps `_version = None` (no gap detection, but events are never silently skipped as stale) and counts `bad_version`. A short grace (3 x 50 ms) covers the writer's INCR-then-store window.
+- Sync is now tolerant per entry: one rejected or unusable broker/route/subscription is logged and skipped instead of aborting the whole snapshot.
+- `off` mode accepts signed and unsigned messages alike, so a rolling upgrade can start with workers on `off`.
+
+Tests: `tests/test_control_signing.py` (35, in-memory) plus `TestSignedControlPlane` in `tests/integration/` (5, real Redis: signed round trip, state written straight into Redis rejected, forged version counter, forged vs genuine live events, wrong-key worker).
+
+Known gaps / follow-ups: no key hot-reload (restart to rotate); `ControlPlane` still reads keys from the environment implicitly when no signer is passed; secrets inside `security_config` remain readable at rest by anyone who can read Redis (signing gives integrity, not confidentiality).

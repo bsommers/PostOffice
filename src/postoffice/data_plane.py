@@ -1,4 +1,5 @@
 import json
+import os
 import redis
 from redis.backoff import NoBackoff
 from redis.retry import Retry
@@ -8,8 +9,12 @@ from collections import deque
 from typing import Any, Dict, Optional, Set, Tuple
 import threading
 from postoffice.app import PostOffice
+from postoffice.signing import HmacSigner, as_envelope, verify_event, verify_state, verify_version
 
 logger = logging.getLogger(__name__)
+
+SIGNING_MODES = ("off", "observe", "enforce")
+LOG_INTERVAL = 10.0  # seconds between warnings of the same kind: rejections must not become a log flood
 
 class DataPlane:
     """
@@ -23,7 +28,8 @@ class DataPlane:
     re-reads the snapshot after a listener reconnect or a version gap.
     """
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
-                 redis_password: Optional[str] = None, redis_tls: bool = False):
+                 redis_password: Optional[str] = None, redis_tls: bool = False,
+                 signer: Optional[HmacSigner] = None, signing_mode: Optional[str] = None):
         # No client-side retry: redis-py would otherwise reconnect and re-subscribe a dropped Pub/Sub
         # connection silently, hiding the gap. We want the error so we re-subscribe (confirmed) and
         # resync; snapshot reads have their own retry loop in sync_state.
@@ -36,10 +42,26 @@ class DataPlane:
         self.channel = "postoffice:config_updates"
         self._stop_event = threading.Event()
         self._init_convergence_state()
+        # Explicit signer wins; otherwise POSTOFFICE_EVENT_KEYS. A key means enforce unless told otherwise.
+        self.signer = signer if signer is not None else HmacSigner.from_env()
+        mode = signing_mode or os.environ.get("POSTOFFICE_EVENT_SIGNING_MODE") or (
+            "enforce" if self.signer is not None else "off")
+        if mode not in SIGNING_MODES:
+            raise ValueError(f"signing_mode must be one of {SIGNING_MODES}")
+        if mode != "off" and self.signer is None:
+            raise ValueError(f"signing_mode '{mode}' requires keys (POSTOFFICE_EVENT_KEYS)")
+        self.signing_mode = mode
+        if self.signer is None:
+            logger.warning(
+                "Control-plane events are not authenticated (set POSTOFFICE_EVENT_KEYS to enable signing)")
 
+    signer: Optional[HmacSigner] = None   # class defaults: planes built without __init__ stay unsigned
+    signing_mode = "off"
     version_key = "postoffice:version"
+    version_sigs_key = "postoffice:version_sigs"
 
     def _init_convergence_state(self) -> None:
+        self._last_logged: Dict[str, float] = {}
         self._version: Optional[int] = None       # last Control Plane version reflected locally
         self._needs_resync = False
         self._pubsub_ready = False                # run() already subscribed this pubsub
@@ -81,11 +103,73 @@ class DataPlane:
             config["kwargs"]["security_config"] = security_config
             self._brokers_applied[name] = json.dumps(config, sort_keys=True)
 
+    # -- authentication ------------------------------------------------------------------------
+
+    def _control_event(self, result: str, what: str = "") -> None:
+        """Counts an outcome; logs rejections (never payloads) at most once per LOG_INTERVAL per kind."""
+        self.po.router.metrics.record_control_event(result)
+        if result in ("applied", "stale", "gap"):
+            return
+        now = time.monotonic()
+        if now - self._last_logged.get(result, -LOG_INTERVAL) >= LOG_INTERVAL:
+            self._last_logged[result] = now
+            logger.warning(f"Control-plane message {result}{' (' + what + ')' if what else ''} "
+                           f"[mode={self.signing_mode}]")
+
+    def _open_signed(self, raw: str, kind: str, hash_name: str = "", field: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Returns the decoded message if it may be applied, else None (the rejection is counted).
+        ``off`` accepts signed and unsigned alike (rolling upgrades); ``observe`` counts failures but
+        still applies; ``enforce`` drops them.
+        """
+        obj = json.loads(raw)
+        env = as_envelope(obj)
+        what = f"{hash_name}/{field}" if hash_name else "event"
+        if env is None:
+            if self.signing_mode == "off":
+                return obj
+            self._control_event("unsigned", what)
+            return obj if self.signing_mode == "observe" else None
+        if self.signing_mode == "off":
+            return json.loads(env["payload"])
+        valid = verify_state(self.signer, hash_name, field, env) if kind == "state" else verify_event(self.signer, env)
+        if valid:
+            return json.loads(env["payload"])
+        self._control_event("bad_signature", what)
+        return json.loads(env["payload"]) if self.signing_mode == "observe" else None
+
+    def _load_hash(self, hash_name: str) -> Dict[str, Dict[str, Any]]:
+        """Reads a state hash, dropping entries that fail verification or cannot be parsed."""
+        entries: Dict[str, Dict[str, Any]] = {}
+        for field, raw in self.r.hgetall(hash_name).items():
+            try:
+                config = self._open_signed(raw, "state", hash_name, field)
+            except (ValueError, KeyError) as e:
+                logger.error(f"Unreadable state entry {hash_name}/{field}: {type(e).__name__}")
+                self._control_event("invalid")
+                continue
+            if config is not None:
+                entries[field] = config
+        return entries
+
     # -- snapshot ------------------------------------------------------------------------------
 
-    def _read_version(self) -> int:
+    def _read_version(self) -> Optional[int]:
+        """Current Control Plane version; None when signing is on and the counter cannot be trusted."""
         raw = self.r.get(self.version_key)
-        return int(raw) if raw is not None else 0
+        version = int(raw) if raw is not None else 0
+        if version == 0 or self.signing_mode == "off":
+            return version
+        entry = None
+        for _ in range(3):  # the writer INCRs before it stores the signature: allow a brief gap
+            entry = self.r.hget(self.version_sigs_key, str(version))
+            if entry is not None:
+                break
+            self._stop_event.wait(0.05)
+        if entry is not None and verify_version(self.signer, version, entry):
+            return version
+        self._control_event("bad_version")
+        return version if self.signing_mode == "observe" else None
 
     def _await_subscribe_ack(self, timeout: float) -> None:
         """Blocks until the server confirms the SUBSCRIBE; only then do events published after it reach us."""
@@ -187,26 +271,17 @@ class DataPlane:
                 # Read the version first: events after it are replayed (idempotently) by the listener.
                 snapshot_version = self._read_version()
 
-                # 1. Sync Brokers
-                brokers = self.r.hgetall("postoffice:brokers")
-                for name, config_str in brokers.items():
-                    self._apply_broker(name, json.loads(config_str))
-
-                # 2. Sync Routes
-                routes = self.r.hgetall("postoffice:routes")
-                for _, config_str in routes.items():
-                    config = json.loads(config_str)
-                    self.po.add_route(
+                # One bad entry (e.g. a rejected broker that a route refers to) must not block the rest.
+                for name, config in self._load_hash("postoffice:brokers").items():
+                    self._apply_entry("broker", name, lambda: self._apply_broker(name, config))
+                for field, config in self._load_hash("postoffice:routes").items():
+                    self._apply_entry("route", field, lambda: self.po.add_route(
                         config["source_broker"], config["source_topic"],
                         config["target_broker"], config["target_topic"],
-                        **config["target_kwargs"]
-                    )
-
-                # 3. Sync Subscriptions
-                subs = self.r.hgetall("postoffice:subscriptions")
-                for _, config_str in subs.items():
-                    config = json.loads(config_str)
-                    self._apply_subscription(config["broker_name"], config["topic"], config["kwargs"])
+                        **config["target_kwargs"]))
+                for field, config in self._load_hash("postoffice:subscriptions").items():
+                    self._apply_entry("subscription", field, lambda: self._apply_subscription(
+                        config["broker_name"], config["topic"], config["kwargs"]))
                 self._version = snapshot_version
                 self._synced_once = True
                 break
@@ -217,6 +292,15 @@ class DataPlane:
                     raise
                 logger.warning(f"Failed to sync state ({e}). Retrying in {retry_delay}s (attempt {attempt}/{max_retries})...")
                 self._stop_event.wait(retry_delay)
+
+    @staticmethod
+    def _apply_entry(kind: str, name: str, apply) -> None:
+        try:
+            apply()
+        except (redis.ConnectionError, redis.TimeoutError):
+            raise
+        except Exception as e:
+            logger.error(f"Skipping {kind} '{name}' during sync: {e}")
 
     def resync(self) -> None:
         """Re-reads the full snapshot (after a reconnect, a version gap or an unknown-entity update)."""
@@ -232,9 +316,11 @@ class DataPlane:
             return True
         if version <= self._version:
             logger.debug(f"Ignoring already-applied update v{version} (at v{self._version})")
+            self._control_event("stale")
             return False
         if version > self._version + 1:
             logger.warning(f"Missed control plane updates (have v{self._version}, got v{version}); resyncing")
+            self._control_event("gap")
             self._needs_resync = True
             return False
         self._version = version
@@ -244,11 +330,14 @@ class DataPlane:
         """Processes an individual Pub/Sub configuration update message."""
         if message and message.get('type') == 'message':
             try:
-                payload = json.loads(message['data'])
+                payload = self._open_signed(message['data'], "event")
+                if payload is None:
+                    return
                 action = payload.get("action")
                 data = payload.get("data", {})
                 if not self._accept_version(payload.get("version")):
                     return
+                self._control_event("applied")
 
                 if action == "add_broker":
                     self._apply_broker(data["name"], data)

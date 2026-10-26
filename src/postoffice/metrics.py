@@ -95,6 +95,13 @@ class MetricsManager:
             registry=self.registry
         )
 
+        self.control_events = Counter(
+            'postoffice_control_events_total',
+            'Control Plane events and state entries seen by a Data Plane worker, by outcome',
+            ['result'],
+            registry=self.registry
+        )
+
         self.dlq_refused = Counter(
             'postoffice_dlq_refused_total',
             'Total number of Dead Letter Queue writes refused by the DLQ budget',
@@ -120,6 +127,10 @@ class MetricsManager:
     def record_sender_event(self, source_broker: str, category: str) -> None:
         """Increments the sender_events counter; no sender label, to keep cardinality bounded."""
         self.sender_events.labels(source_broker=self._label('source_broker', source_broker), category=category).inc()
+
+    def record_control_event(self, result: str) -> None:
+        """Counts a control-plane message outcome (applied, unsigned, bad_signature, ...)."""
+        self.control_events.labels(result=result).inc()
 
     def record_dlq_refused(self, source_broker: str, reason: str) -> None:
         """Increments the dlq_refused counter."""

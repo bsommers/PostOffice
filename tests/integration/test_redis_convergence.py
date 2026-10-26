@@ -7,6 +7,7 @@ import redis
 
 from postoffice.control_plane import ControlPlane
 from postoffice.data_plane import DataPlane
+from postoffice.signing import HmacSigner
 
 TARGET = os.environ.get("POSTOFFICE_TEST_REDIS")
 ENABLED = os.environ.get("POSTOFFICE_INTEGRATION") == "1" and TARGET
@@ -52,8 +53,8 @@ class RedisCase(unittest.TestCase):
         self.admin.config_set("client-output-buffer-limit", " ".join(pubsub))
         self.admin.flushall()
 
-    def data_plane(self):
-        dp = DataPlane(redis_host=self.host, redis_port=self.port)
+    def data_plane(self, **kwargs):
+        dp = DataPlane(redis_host=self.host, redis_port=self.port, **kwargs)
         self.planes.append(dp)
         return dp
 
@@ -166,6 +167,66 @@ class TestRecovery(RedisCase):
                                "Redis did not cut off the stalled subscriber; the test is not exercising the limit")
         self.start_listener(dp)
         self.assertTrue(wait_until(lambda: len(self.routes(dp)) == 20), "state never converged after the cut-off")
+
+
+KEY = "i" * 32
+
+
+class TestSignedControlPlane(RedisCase):
+    def setUp(self):
+        super().setUp()
+        self.signer = HmacSigner({"it": KEY})
+        self.cp = ControlPlane(redis_host=self.host, redis_port=self.port, signer=self.signer)
+
+    def count(self, dp, result):
+        return dp.po.router.metrics.registry.get_sample_value(
+            "postoffice_control_events_total", {"result": result}) or 0.0
+
+    def test_signed_state_and_version_verify_end_to_end(self):
+        self.seed_brokers()
+        self.cp.add_route("b1", "in", "b2", "out")
+        dp = self.data_plane(signer=self.signer)
+        dp._converge()
+        self.assertEqual(len(self.routes(dp)), 1)
+        self.assertEqual(dp._version, 3)
+        self.assertEqual(self.count(dp, "bad_signature") + self.count(dp, "unsigned"), 0.0)
+
+    def test_state_written_straight_into_redis_is_rejected(self):
+        self.seed_brokers()
+        self.admin.hset("postoffice:brokers", "evil", '{"protocol": "mqtt", "kwargs": {"host": "attacker"}}')
+        dp = self.data_plane(signer=self.signer)
+        dp._converge()
+        self.assertNotIn("evil", dp.po.brokers)
+        self.assertEqual(sorted(dp.po.brokers), ["b1", "b2"])
+        self.assertEqual(self.count(dp, "unsigned"), 1.0)
+
+    def test_a_forged_version_counter_cannot_silence_real_events(self):
+        self.seed_brokers()
+        self.admin.set(VERSION, 10 ** 6)
+        dp = self.data_plane(signer=self.signer)
+        dp._converge()
+        self.assertIsNone(dp._version)
+        self.assertEqual(self.count(dp, "bad_version"), 1.0)
+
+    def test_forged_and_genuine_live_events(self):
+        self.seed_brokers()
+        dp = self.data_plane(signer=self.signer)
+        dp._converge()
+        thread = threading.Thread(target=dp._listen_for_updates, daemon=True)
+        thread.start()
+        self.assertTrue(wait_until(lambda: self.pubsub_clients() >= 1))
+        forged = '{"action": "add_route", "version": 3, "data": {"source_broker": "b1", "source_topic": "in", "target_broker": "b2", "target_topic": "evil", "target_kwargs": {}}}'
+        self.admin.publish("postoffice:config_updates", forged)
+        self.cp.add_route("b1", "in", "b2", "genuine")
+        self.assertTrue(wait_until(lambda: len(self.routes(dp)) == 1))
+        self.assertEqual([r["target_topic"] for r in self.routes(dp)], ["genuine"])
+        self.assertEqual(self.count(dp, "unsigned"), 1.0)
+
+    def test_worker_with_the_wrong_key_accepts_nothing(self):
+        self.seed_brokers()
+        dp = self.data_plane(signer=HmacSigner({"it": "w" * 32}))
+        dp._converge()
+        self.assertEqual(dp.po.brokers, {})
 
 
 if __name__ == "__main__":

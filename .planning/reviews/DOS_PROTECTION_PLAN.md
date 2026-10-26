@@ -203,7 +203,7 @@ Implemented (e33a9a5): `BaseClient` `max_publish_buffer_bytes` (default 64 MiB; 
 - [ ] Failing tests: buffer rejects when `max_publish_buffer_bytes` exceeded; items older than `max_age` are discarded on flush with `on_error`; metric labels beyond the distinct cap collapse to `other`; `max_routes_per_topic` enforced at `add_route`.
 - [ ] Commit `feat: byte/age buffer limits and metric-cardinality guard`.
 
-### Task D9: Control-plane hardening (SCOPED, awaiting decisions)
+### Task D9: Control-plane hardening (IN PROGRESS: D9a done)
 
 Prerequisites T5 and T7 are done. Full scope, decisions and test plan: `D9_SCOPING.md`. Split into D9a signed events and state, D9b event limits and payload validation, D9c schema definition caps, D9d ingress rules over the Control Plane.
 
