@@ -1,17 +1,46 @@
 import logging
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 import threading
 from wsgiref.simple_server import WSGIServer
-from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest, start_http_server
 
 logger = logging.getLogger(__name__)
+
+class LabelGuard:
+    """
+    Bounds the distinct values of a metric label. Values seen before the cap keep their own series;
+    later ones collapse into ``other``, so hostile or buggy input cannot explode Prometheus series.
+    """
+    OVERFLOW = "other"
+
+    def __init__(self, max_values: int):
+        if max_values <= 0:
+            raise ValueError("max_label_values must be > 0")
+        self.max_values = max_values
+        self._seen = set()
+        self._lock = threading.Lock()
+
+    def __call__(self, value: str) -> str:
+        if value in self._seen:
+            return value
+        with self._lock:
+            if value in self._seen:
+                return value
+            if len(self._seen) < self.max_values:
+                self._seen.add(value)
+                return value
+        return self.OVERFLOW
+
 
 class MetricsManager:
     """
     Manages Prometheus metrics instrumentation for PostOffice.
     Encapsulates counters, histograms, and optional HTTP metrics scraping server.
     """
-    def __init__(self, registry: Optional[CollectorRegistry] = None):
+    def __init__(self, registry: Optional[CollectorRegistry] = None, max_label_values: int = 100):
+        self._guards = {}
+        self._max_label_values = max_label_values
+        LabelGuard(max_label_values)  # validate eagerly
         self.registry = registry or CollectorRegistry(auto_describe=True)
         self._server_handle: Optional[Tuple[WSGIServer, threading.Thread]] = None
         self._server_lock = threading.Lock()
@@ -59,6 +88,13 @@ class MetricsManager:
             registry=self.registry
         )
 
+        self.inflight = Gauge(
+            'postoffice_inflight_messages',
+            'Messages accepted from a source and not yet acknowledged or negatively acknowledged',
+            ['source_broker'],
+            registry=self.registry
+        )
+
         self.dlq_refused = Counter(
             'postoffice_dlq_refused_total',
             'Total number of Dead Letter Queue writes refused by the DLQ budget',
@@ -66,45 +102,56 @@ class MetricsManager:
             registry=self.registry
         )
 
+    def _label(self, name: str, value: str) -> str:
+        """Maps a label value through the per-label-name cardinality guard."""
+        guard = self._guards.get(name)
+        if guard is None:
+            guard = self._guards.setdefault(name, LabelGuard(self._max_label_values))
+        return guard(value)
+
+    def set_inflight_source(self, source_broker: str, depth_fn: Callable[[], float]) -> None:
+        """Reports in-flight depth for a source by sampling ``depth_fn`` at scrape time."""
+        self.inflight.labels(source_broker=self._label("source_broker", source_broker)).set_function(depth_fn)
+
     def record_ingress(self, source_broker: str, rule: str, action: str) -> None:
         """Increments the ingress firewall counter."""
-        self.ingress.labels(source_broker=source_broker, rule=rule, action=action).inc()
+        self.ingress.labels(source_broker=self._label('source_broker', source_broker), rule=rule, action=action).inc()
 
     def record_sender_event(self, source_broker: str, category: str) -> None:
         """Increments the sender_events counter; no sender label, to keep cardinality bounded."""
-        self.sender_events.labels(source_broker=source_broker, category=category).inc()
+        self.sender_events.labels(source_broker=self._label('source_broker', source_broker), category=category).inc()
 
     def record_dlq_refused(self, source_broker: str, reason: str) -> None:
         """Increments the dlq_refused counter."""
-        self.dlq_refused.labels(source_broker=source_broker, reason=reason).inc()
+        self.dlq_refused.labels(source_broker=self._label('source_broker', source_broker), reason=reason).inc()
 
     def record_routed(self, source_broker: str, target_broker: str, status: str = "success") -> None:
         """Increments the messages_routed counter."""
         self.messages_routed.labels(
-            source_broker=source_broker,
-            target_broker=target_broker,
+            source_broker=self._label('source_broker', source_broker),
+            target_broker=self._label('target_broker', target_broker),
             status=status
         ).inc()
 
     def record_error(self, source_broker: str, error_type: str) -> None:
         """Increments the routing_errors counter."""
         self.routing_errors.labels(
-            source_broker=source_broker,
+            source_broker=self._label('source_broker', source_broker),
             error_type=error_type
         ).inc()
 
     def record_duration(self, source_broker: str, duration_seconds: float) -> None:
         """Observes the routing duration in the histogram."""
         self.routing_duration.labels(
-            source_broker=source_broker
+            source_broker=self._label('source_broker', source_broker)
         ).observe(duration_seconds)
 
     def record_dlq(self, source_broker: str, dlq_broker: str, dlq_topic: str) -> None:
         """Increments the dlq_messages counter."""
         self.dlq_messages.labels(
-            source_broker=source_broker,
-            dlq_broker=dlq_broker,
-            dlq_topic=dlq_topic
+            source_broker=self._label('source_broker', source_broker),
+            dlq_broker=self._label('dlq_broker', dlq_broker),
+            dlq_topic=self._label('dlq_topic', dlq_topic)
         ).inc()
 
     def get_metrics_text(self) -> str:

@@ -23,9 +23,11 @@ class PostOffice:
         dlq_broker: Optional[str] = None,
         dlq_topic: Optional[str] = None,
         schema_registry: Optional[BaseSchemaRegistry] = None,
-        on_unroutable: str = "nack"
+        on_unroutable: str = "nack",
+        max_routes_per_topic: Optional[int] = 100,
     ):
-        self.router = Router(schema_registry=schema_registry)
+        self.max_routes_per_topic = max_routes_per_topic
+        self.router = Router(schema_registry=schema_registry, max_routes_per_topic=max_routes_per_topic)
         self.router.set_unroutable_policy(on_unroutable)
         self.on_unroutable = on_unroutable
         self.dlq_budget: Optional[BudgetedDlq] = None
@@ -242,6 +244,7 @@ class PostOffice:
         self.router = Router(
             metrics_manager=self.metrics_manager,
             schema_registry=self.schema_registry,
+            max_routes_per_topic=self.max_routes_per_topic,
         )
         if self.dlq_broker and self.dlq_topic:
             self.router.set_dlq(self.dlq_broker, self.dlq_topic)

@@ -95,7 +95,8 @@ class Router:
     def __init__(
         self,
         metrics_manager: Optional[MetricsManager] = None,
-        schema_registry: Optional[BaseSchemaRegistry] = None
+        schema_registry: Optional[BaseSchemaRegistry] = None,
+        max_routes_per_topic: Optional[int] = 100,
     ):
         # Maps (source_client_name, source_topic) to list of dictionaries describing target parameters (kept for inspection)
         self.routes: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
@@ -117,6 +118,8 @@ class Router:
         self.dlq_budget = BudgetedDlq()
         # Ingress firewall evaluated before routing (None = disabled)
         self.firewall: Optional[Firewall] = None
+        # Fan-out bound per (source, topic): a runaway control plane cannot multiply every message
+        self.max_routes_per_topic = max_routes_per_topic
         # Per-source in-flight caps with protocol-native back-pressure
         self._inflight: Dict[str, InflightLimiter] = {}
         # Cap on requeue-driven redelivery of failing messages (None = unbounded legacy behaviour)
@@ -256,6 +259,7 @@ class Router:
         """
         previous = self._inflight.pop(broker, None)
         if max_inflight is None:
+            self.metrics.set_inflight_source(broker, lambda: 0)
             if previous is not None:
                 self._call_client(broker, "set_inflight_limit", None)
                 if previous.paused:
@@ -268,6 +272,8 @@ class Router:
             on_saturate=lambda: self._call_client(broker, "pause_consumption"),
             on_drain=lambda: self._call_client(broker, "resume_consumption"),
         )
+        limiter = self._inflight[broker]
+        self.metrics.set_inflight_source(broker, lambda: limiter.inflight)
         self._call_client(broker, "set_inflight_limit", max_inflight)
 
     @staticmethod
@@ -367,6 +373,11 @@ class Router:
         key = (source_client, source_topic)
         if key not in self.routes:
             self.routes[key] = []
+        if self.max_routes_per_topic is not None and len(self.routes[key]) >= self.max_routes_per_topic:
+            raise ValueError(
+                f"Route limit reached for {source_client}/{source_topic} "
+                f"(max_routes_per_topic={self.max_routes_per_topic})."
+            )
 
         route_config = {
             "target_client": target_client,
