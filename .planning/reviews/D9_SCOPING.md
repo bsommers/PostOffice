@@ -115,3 +115,10 @@ Implemented: `postoffice/schema/limits.py` (`SchemaLimits`, `SchemaDefinitionErr
 Known gaps: the Redis write still happens before fastavro/protobuf compile, so a definition within the caps that fails to compile is stored in Redis and fails on each worker (pre-existing; reorder if it matters). Schema changes still do not propagate to running workers via the event channel; they load lazily on first use.
 
 Tests: `tests/test_schema_limits.py` (34, hermetic). Suite 482 OK.
+
+### D9d: Ingress rules over the Control Plane (DONE)
+Implemented: action `set_ingress` (data = `Firewall.from_dict` config plus `inflight`), `ControlPlane.set_ingress(config)` storing it signed under `postoffice:ingress` field `rules`, loaded in `DataPlane.sync_state`. The validator checks shape only (keys, rule count <= 64, inflight bounds); the worker builds the `Firewall` before touching anything, so an unknown rule type or bad rule arguments keep the old firewall and count `invalid`. Identical configs are skipped (a resync does not reset rate-limit or ledger state). Swap is `PostOffice.configure_ingress(firewall)`; inflight caps dropped from the new config are removed. `clear_state` also deletes the hash and disables the firewall.
+
+Known gaps: the hash holds a single `rules` field, so there is no per-broker partial update; docs for the new action are left to D10.
+
+Tests: `tests/test_control_ingress.py` (20, hermetic). Suite 502 OK; integration tier not rerun.
