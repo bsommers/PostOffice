@@ -109,7 +109,14 @@ class ControlPlane:
         self._put("postoffice:subscriptions", sub_id, config)
         self._publish_update("add_subscription", config)
 
+    def set_ingress(self, config: Dict[str, Any]):
+        """Replaces the ingress firewall on every worker (``Firewall.from_dict`` shape, plus ``inflight``)."""
+        config = dict(config)
+        self._put("postoffice:ingress", "rules", config)
+        self._publish_update("set_ingress", config)
+
     def clear_state(self):
         """Wipes the distributed state (dangerous)."""
-        self.r.delete("postoffice:brokers", "postoffice:routes", "postoffice:subscriptions")
+        self.r.delete("postoffice:brokers", "postoffice:routes", "postoffice:subscriptions",
+                      "postoffice:ingress")
         self._publish_update("clear_state", {})

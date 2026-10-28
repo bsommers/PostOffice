@@ -9,6 +9,7 @@ from collections import deque
 from typing import Any, Dict, Optional, Set, Tuple
 import threading
 from postoffice.app import PostOffice
+from postoffice.ingress import Firewall
 from postoffice.backoff import ExponentialBackoff
 from postoffice.jsonscan import scan_json
 from postoffice.ratelimit import TokenBucket
@@ -126,6 +127,8 @@ class DataPlane:
         self._synced_once = False
         self._brokers_applied: Dict[str, str] = {}
         self._subs_applied: Set[Tuple[str, str, str]] = set()
+        self._ingress_applied: Optional[str] = None
+        self._ingress_inflight: Set[str] = set()
 
     # -- idempotent appliers -------------------------------------------------------------------
 
@@ -147,6 +150,31 @@ class DataPlane:
             return
         self.po.subscribe(broker, topic, **kwargs)
         self._subs_applied.add(key)
+
+    def _build_ingress(self, config: Dict[str, Any]) -> Optional[Firewall]:
+        """Builds the new firewall before anything is swapped; None when this exact config is already live."""
+        if json.dumps(config, sort_keys=True) == self._ingress_applied:
+            return None
+        try:
+            return Firewall.from_dict(config)
+        except Exception as e:  # unknown rule type, bad rule arguments, bad ledger settings
+            raise PayloadError(f"ingress config rejected ({type(e).__name__})") from None
+
+    def _install_ingress(self, config: Dict[str, Any], firewall: Optional[Firewall]) -> None:
+        """Swaps the firewall (one reference assignment) and reconciles the in-flight caps it carries."""
+        if firewall is None:
+            return
+        self.po.configure_ingress(firewall)
+        inflight = config.get("inflight", {})
+        for broker in self._ingress_inflight - set(inflight):
+            self.po.set_inflight_limit(broker, None)
+        for broker, limit in inflight.items():
+            self.po.set_inflight_limit(broker, **limit)
+        self._ingress_inflight = set(inflight)
+        self._ingress_applied = json.dumps(config, sort_keys=True)
+
+    def _apply_ingress(self, config: Dict[str, Any]) -> None:
+        self._install_ingress(config, self._build_ingress(config))
 
     def _record_security(self, name: str, security_config: Dict[str, Any]) -> None:
         """Keeps the applied-config record in step with a hot security reload (no needless replace)."""
@@ -360,6 +388,10 @@ class DataPlane:
                     self._apply_entry("subscription", field, "add_subscription", config,
                                       lambda: self._apply_subscription(
                                           config["broker_name"], config["topic"], config["kwargs"]))
+                for field, config in self._load_hash("postoffice:ingress").items():
+                    if field == "rules":
+                        self._apply_entry("ingress", field, "set_ingress", config,
+                                          lambda: self._apply_ingress(config))
                 self._version = snapshot_version
                 self._synced_once = True
                 break
@@ -474,6 +506,13 @@ class DataPlane:
                 except PayloadError as e:
                     self._control_event("invalid", f"{action}: {e}")
                     return
+                prepared = None
+                if action == "set_ingress":
+                    try:
+                        prepared = self._build_ingress(data)
+                    except PayloadError as e:
+                        self._control_event("invalid", f"{action}: {e}")
+                        return
                 self._control_event("applied")
 
                 if action == "add_broker":
@@ -496,12 +535,16 @@ class DataPlane:
                         return
                     self.po.reload_broker_security(name, data["security_config"])
                     self._record_security(name, data["security_config"])
+                elif action == "set_ingress":
+                    self._install_ingress(data, prepared)
                 elif action == "clear_state":
                     logger.warning("Control plane issued clear_state. Tearing down existing brokers and routes...")
                     was_running = self.po.is_running
                     self.po.reset()
                     self._brokers_applied.clear()
                     self._subs_applied.clear()
+                    self.po.configure_ingress(None)
+                    self._ingress_applied, self._ingress_inflight = None, set()
                     if was_running:
                         # reset() leaves the facade stopped; restart so brokers added next connect.
                         self.po.start()

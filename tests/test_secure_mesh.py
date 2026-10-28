@@ -127,7 +127,8 @@ class TestSecureMesh(unittest.TestCase):
         mock_redis.hgetall.side_effect = [
             {"mqtt_dp": json.dumps(broker_config)},  # brokers
             {},                                      # routes
-            {}                                       # subscriptions
+            {},                                      # subscriptions
+            {},                                      # ingress
         ]
 
         dp = DataPlane.__new__(DataPlane)

@@ -12,7 +12,8 @@ from typing import Any, Dict, Set
 import postoffice.plugins  # noqa: F401  (registers the built-in protocols)
 from postoffice.registry import ClientRegistry
 
-ACTIONS = ("add_broker", "add_route", "add_subscription", "update_broker_security", "clear_state")
+ACTIONS = ("add_broker", "add_route", "add_subscription", "update_broker_security", "clear_state",
+           "set_ingress")
 
 NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,127}\Z")
 KEY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]{0,63}\Z")
@@ -145,7 +146,44 @@ def _validate_security_update(data: Dict[str, Any]) -> None:
     _check_dict(data["security_config"], "security_config")
 
 
+INGRESS_KEYS = {"rules", "on_rule_error", "ledger", "inflight"}
+MAX_INGRESS_RULES = 64
+INFLIGHT_KEYS = {"max_inflight", "low_water", "lease_timeout"}
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_inflight(inflight: Any) -> None:
+    _check_dict(inflight, "inflight")
+    for broker, limit in inflight.items():
+        _check_name(broker, "inflight broker name")
+        _check_dict(limit, "inflight limit")
+        _require(set(limit) <= INFLIGHT_KEYS, "inflight limit has an unknown key")
+        maximum = limit.get("max_inflight")
+        _require(_is_int(maximum) and maximum > 0, "max_inflight must be a positive integer")
+        low = limit.get("low_water")
+        _require(low is None or (_is_int(low) and 0 <= low < maximum), "low_water must be in 0..max_inflight-1")
+        lease = limit.get("lease_timeout")
+        _require(lease is None or (isinstance(lease, (int, float)) and not isinstance(lease, bool) and lease > 0),
+                 "lease_timeout must be a positive number")
+
+
+def _validate_ingress(data: Dict[str, Any]) -> None:
+    """Shape only: the worker builds the Firewall itself, which checks rule types and arguments."""
+    _require(set(data) <= INGRESS_KEYS, "set_ingress has an unknown key")
+    rules = data.get("rules", [])
+    _require(isinstance(rules, list) and len(rules) <= MAX_INGRESS_RULES,
+             f"rules must be a list of at most {MAX_INGRESS_RULES}")
+    _require(all(isinstance(rule, dict) for rule in rules), "each rule must be an object")
+    _require(isinstance(data.get("on_rule_error", "reject"), str), "on_rule_error must be a string")
+    _require(isinstance(data.get("ledger", {}), dict), "ledger must be an object")
+    _validate_inflight(data.get("inflight", {}))
+
+
 _VALIDATORS = {
+    "set_ingress": _validate_ingress,
     "add_broker": _validate_broker,
     "add_route": _validate_route,
     "add_subscription": _validate_subscription,
