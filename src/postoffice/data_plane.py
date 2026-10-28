@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 import threading
 from postoffice.app import PostOffice
 from postoffice.backoff import ExponentialBackoff
-from postoffice.ingress.content import scan_json
+from postoffice.jsonscan import scan_json
 from postoffice.ratelimit import TokenBucket
 from postoffice.signing import HmacSigner, as_envelope, verify_event, verify_state, verify_version
 from postoffice.validation import ACTIONS, PayloadError, validate_action

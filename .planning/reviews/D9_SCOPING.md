@@ -1,6 +1,6 @@
 # D9 Scoping: Control-plane hardening
 
-Status: scoped 2026-10-25. **Decisions 1-6 accepted as recommended** (user: "go with recommendations"). D9a, D9b DONE; D9c-D9d open. See section 7.
+Status: scoped 2026-10-25. **Decisions 1-6 accepted as recommended** (user: "go with recommendations"). D9a, D9b, D9c DONE; D9d open. See section 7.
 Prerequisites now done: T5 (Redis password/TLS, loopback metrics, skip-verify warnings; `6f4e118`), T7 (subscribe-before-snapshot, idempotent sync, versioned events, resync; `830fcd0`). Threat I in `DOS_PROTECTION_PLAN.md`.
 
 ## 1. What an attacker with Redis access can do today
@@ -101,3 +101,17 @@ Pipeline per live event, cheapest first: size (before any parse) -> rate -> sign
 Known gaps: a deferred resync is retried on the *next* message, so if the last event of a burst is shed and nothing follows, the worker stays behind until the next event (a timer thread would fix this but needs locking around apply; not done). The rate limit also applies to the buffered events replayed after a snapshot, which a legitimate burst over 100 will trip; it recovers by resync. Key-name length of `target_kwargs` is bounded (64) but values are not type-checked.
 
 Tests: `tests/test_control_limits.py` (43, hermetic). Suite 448 OK; integration tier 12 OK against real Redis.
+
+### D9c: Schema definition caps (DONE)
+Implemented: `postoffice/schema/limits.py` (`SchemaLimits`, `SchemaDefinitionError`, `validate_schema_definition`). `scan_json` moved to the neutral `postoffice/jsonscan.py` (importing it from `ingress.content` would have been circular through `schema.converters`); `ContentGuard` and `DataPlane` both use it.
+- `InMemorySchemaRegistry.register_schema` validates before compiling, so one check covers local registration **and** the Redis load path. `RedisSchemaRegistry.register_schema` validates before any Redis write. `get_schema` checks the raw string length before `json.loads`, and an unacceptable definition from Redis is logged and treated as "no such schema" (returns None, never cached).
+- Defaults, all configurable (`SchemaLimits(...)` or `POSTOFFICE_SCHEMA_MAX_BYTES` / `_MAX_FIELDS` / `_MAX_DEPTH`): 64 KiB, 256 fields, depth 32. Depth is JSON nesting; a nested Avro record costs three levels, so 32 is about 10 records deep.
+- Protobuf dict: identifier patterns for message and field names, dotted package pattern, unique names and numbers, numbers in 1..2^29-1 excluding 19000-19999 (bool rejected), label `optional`/`repeated`, and **unknown type names are now rejected** (before: silently `string`). `FileDescriptorProto`: byte size, at least one message, total fields (nested included), field numbers. Compiled `Message` classes are trusted (code, not data).
+- Avro: JSON strings are size-checked and structurally scanned before parsing; dicts get an iterative depth walk with a node budget (a self-referencing Python structure terminates) and a serialized-size check.
+- Schema names: 1-128 characters, no NUL.
+
+**Behaviour change:** a Protobuf definition with a misspelled type (`"strng"`) used to compile as `string`; it is now an error.
+
+Known gaps: the Redis write still happens before fastavro/protobuf compile, so a definition within the caps that fails to compile is stored in Redis and fails on each worker (pre-existing; reorder if it matters). Schema changes still do not propagate to running workers via the event channel; they load lazily on first use.
+
+Tests: `tests/test_schema_limits.py` (34, hermetic). Suite 482 OK.

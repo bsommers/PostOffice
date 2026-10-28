@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Union
 import fastavro
 from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 from google.protobuf.message import Message
+from postoffice.schema.limits import SchemaDefinitionError, SchemaLimits, validate_schema_definition
 
 logger = logging.getLogger(__name__)
 
@@ -114,21 +115,27 @@ class BaseSchemaRegistry(abc.ABC):
 class InMemorySchemaRegistry(BaseSchemaRegistry):
     """Thread-safe, local in-memory schema registry."""
 
-    def __init__(self):
+    def __init__(self, limits: Optional[SchemaLimits] = None):
+        self.limits = limits or SchemaLimits.from_env()
         self._by_name: Dict[str, SchemaEntry] = {}
         self._by_id: Dict[int, SchemaEntry] = {}
         self._next_id: int = 1
         self._lock = threading.Lock()
+
+    def check_definition(self, name: str, definition: Any, schema_type: str) -> Any:
+        """Applies the size / field / depth caps; returns the definition to compile."""
+        return validate_schema_definition(name, definition, schema_type, self.limits)
 
     def register_schema(self, name: str, definition: Any, schema_type: str = "AVRO") -> int:
         normalized_type = schema_type.upper()
         if normalized_type not in ("AVRO", "PROTOBUF"):
             raise ValueError(f"Unsupported schema type: {schema_type}. Supported: 'AVRO', 'PROTOBUF'")
 
+        # Caps first: the definition may have come from Redis, and compiling is the expensive step.
+        definition = self.check_definition(name, definition, normalized_type)
+
         # Parse and compile the schema
         if normalized_type == "AVRO":
-            if isinstance(definition, str):
-                definition = json.loads(definition)
             parsed = fastavro.parse_schema(definition)
         elif normalized_type == "PROTOBUF":
             if isinstance(definition, type) and issubclass(definition, Message):
@@ -174,10 +181,11 @@ class RedisSchemaRegistry(BaseSchemaRegistry):
     Caches parsed schema representations locally in memory to optimize routing throughput.
     """
 
-    def __init__(self, redis_client: Any, prefix: str = "postoffice:schemas"):
+    def __init__(self, redis_client: Any, prefix: str = "postoffice:schemas",
+                 limits: Optional[SchemaLimits] = None):
         self.redis = redis_client
         self.prefix = prefix
-        self.local_cache = InMemorySchemaRegistry()
+        self.local_cache = InMemorySchemaRegistry(limits)
         self._lock = threading.Lock()
 
     def register_schema(self, name: str, definition: Any, schema_type: str = "AVRO") -> int:
@@ -185,6 +193,9 @@ class RedisSchemaRegistry(BaseSchemaRegistry):
         meta_key = f"{self.prefix}:meta:{name}"
         id_map_key = f"{self.prefix}:id_to_name"
         next_id_key = f"{self.prefix}:next_id"
+
+        # Nothing reaches Redis (and so other workers) unless it is within the caps.
+        self.local_cache.check_definition(name, definition, normalized_type)
 
         # Check existing
         existing_meta = self.redis.hgetall(meta_key)
@@ -229,12 +240,19 @@ class RedisSchemaRegistry(BaseSchemaRegistry):
         if isinstance(def_raw, bytes):
             def_raw = def_raw.decode("utf-8")
 
+        # The Redis copy is untrusted: bound its raw size before parsing, and treat an unacceptable
+        # definition as "no such schema" instead of compiling it.
         try:
-            definition = json.loads(def_raw)
-        except Exception:
-            definition = def_raw
-
-        self.local_cache.register_schema(name, definition, schema_type=schema_type)
+            if len(def_raw) > self.local_cache.limits.max_bytes:
+                raise SchemaDefinitionError(f"definition is larger than {self.local_cache.limits.max_bytes} bytes")
+            try:
+                definition = json.loads(def_raw)
+            except Exception:
+                definition = def_raw
+            self.local_cache.register_schema(name, definition, schema_type=schema_type)
+        except SchemaDefinitionError as e:
+            logger.error(f"Ignoring schema '{name[:80]}' from Redis: {e}")
+            return None
         return self.local_cache.get_schema(name)
 
     def get_schema_by_id(self, schema_id: int) -> Optional[SchemaEntry]:
