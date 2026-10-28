@@ -122,3 +122,6 @@ Implemented: action `set_ingress` (data = `Firewall.from_dict` config plus `infl
 Known gaps: the hash holds a single `rules` field, so there is no per-broker partial update; docs for the new action are left to D10.
 
 Tests: `tests/test_control_ingress.py` (20, hermetic). Suite 502 OK; integration tier not rerun.
+
+### D10: docs and load test (DONE, quick 261028-d10)
+Documented the whole D9 arc in `docs/user-guide/distributed-plane.md` (plus cross-references) and added `tests/load_control_plane.py`. Gap: no user-guide page for the ingress firewall itself.
