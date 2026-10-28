@@ -124,4 +124,4 @@ Known gaps: the hash holds a single `rules` field, so there is no per-broker par
 Tests: `tests/test_control_ingress.py` (20, hermetic). Suite 502 OK; integration tier not rerun.
 
 ### D10: docs and load test (DONE, quick 261028-d10)
-Documented the whole D9 arc in `docs/user-guide/distributed-plane.md` (plus cross-references) and added `tests/load_control_plane.py`. Gap: no user-guide page for the ingress firewall itself.
+Documented the whole D9 arc in `docs/user-guide/distributed-plane.md` (plus cross-references) and added `tests/load_control_plane.py`. Follow-up done in quick 261028-d11: firewall guide written, integration tier rerun (12 OK).
