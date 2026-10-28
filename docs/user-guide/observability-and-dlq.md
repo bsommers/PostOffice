@@ -33,6 +33,9 @@ PostOffice embeds Prometheus instrumentation via `MetricsManager`, providing rea
 | `postoffice_dlq_messages_total` | Counter | `source_broker`, `dlq_broker`, `dlq_topic` | Total messages diverted into Dead Letter Queues. |
 | `postoffice_dlq_refused_total` | Counter | `source_broker`, `reason` | DLQ writes refused by the budget (`oversize`, `rate`, `bytes`). A rising value means a sender is misbehaving or misconfigured. |
 | `postoffice_control_events_total` | Counter | `result` | Control Plane events seen by a Data Plane worker, by outcome (`applied`, `stale`, `gap`, `unsigned`, `bad_signature`, `bad_version`, `oversize`, `rate_limited`, `forbidden_action`, `invalid`). See [Securing the Control Plane](distributed-plane.md#securing-the-control-plane). |
+| `postoffice_ingress_total` | Counter | `source_broker`, `rule`, `action` | Messages stopped by the ingress firewall. See [Ingress Firewall](ingress-firewall.md#metrics). |
+| `postoffice_sender_events_total` | Counter | `source_broker`, `category` | Problem events attributed to senders. |
+| `postoffice_inflight_messages` | Gauge | `source_broker` | Accepted messages not yet acknowledged. |
 | `postoffice_circuit_breaker_state` | Gauge | `target_broker` | Current state of per-broker egress circuit breaker (`0` = `CLOSED`, `1` = `OPEN`, `2` = `HALF_OPEN`). |
 
 ### Enabling the HTTP Scraping Endpoint

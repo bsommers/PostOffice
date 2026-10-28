@@ -139,7 +139,7 @@ Workers receiving `clear_state` invoke `PostOffice.reset()`, disconnecting all a
 
 ### Distributing Ingress Rules
 
-`cp.set_ingress(config)` replaces the ingress firewall (`postoffice.ingress.Firewall`, the rule chain evaluated before routing) on every worker. `config` has the same shape as `Firewall.from_dict`, plus an optional `inflight` section with per-broker in-flight caps. Rule arguments are the constructor parameters of the classes in `src/postoffice/ingress/rules.py`; the firewall itself does not yet have its own user-guide page.
+`cp.set_ingress(config)` replaces the ingress firewall (`postoffice.ingress.Firewall`, the rule chain evaluated before routing) on every worker. `config` has the same shape as `Firewall.from_dict`, plus an optional `inflight` section with per-broker in-flight caps. Rule types and their arguments are documented in the [Ingress Firewall guide](ingress-firewall.md).
 
 ```python
 cp.set_ingress({

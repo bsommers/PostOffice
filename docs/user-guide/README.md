@@ -160,6 +160,7 @@ Detailed walkthroughs and recipes for each major capability:
 - **[Operational Resiliency, Queuing & Circuit Breakers](resiliency-and-circuit-breakers.md):** Configure offline subscription replay, bounded publish buffers (`reject` / `drop_oldest`), egress circuit breakers, and live credential hot-reload.
 - **[Observability & Dead Letter Queues](observability-and-dlq.md):** Configure Prometheus scraping, track routing histograms, and isolate poison pills via DLQ JSON envelopes.
 - **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub, sign and rate-limit control events, and distribute ingress rules.
+- **[Ingress Firewall, Sender Ledger & In-Flight Limits](ingress-firewall.md):** Reject oversized, malformed or abusive traffic before routing, track misbehaving senders, apply back-pressure, and cap retries.
 - **[Production Security, TLS/mTLS & Authentication](security-and-auth.md):** Configure TLS socket encryption, client certificates (mTLS), SASL authentication, and zero-downtime credential rotation across all brokers.
 
 ---
