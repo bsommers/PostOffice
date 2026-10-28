@@ -17,6 +17,7 @@ Common issues, diagnostics, error messages, and their solutions when developing 
   - [`CircuitBreakerOpenError: Circuit breaker for broker 'X' is OPEN`](#circuit-breaker-open)
   - [`BufferOverflowError: Publish buffer for client 'X' is full`](#publish-buffer-overflow)
   - [`Redis connection error in update listener: Retrying in 1.0s...`](#redis-connection-error)
+  - [Control-plane events rejected (`bad_signature`, `unsigned`, `forbidden_action`, `invalid`)](#control-plane-events-rejected)
 - [Frequently Asked Questions](#frequently-asked-questions)
 
 ---
@@ -81,12 +82,21 @@ Common issues, diagnostics, error messages, and their solutions when developing 
 - **Cause:** Data Plane worker cannot reach Redis on `localhost:6379`.
 - **Solution:** Start the local Redis broker stack using `docker compose up -d redis` or specify the correct Redis host and port when launching `DataPlane(redis_host="...", redis_port=...)`.
 
+### Control-Plane Events Rejected
+- **Symptom:** Worker logs `Control-plane message <result> ... [mode=enforce]` and `postoffice_control_events_total{result="..."}` rises; configuration changes do not reach the worker.
+- **Cause and solution, by `result`:**
+  - `unsigned` / `bad_signature` / `bad_version`: the control plane and worker disagree on `POSTOFFICE_EVENT_KEYS` (missing, different secret, or key id not in the worker's list), or state in Redis was written before signing was enabled. Align the keys and re-send state. To diagnose without dropping changes, set the worker to `POSTOFFICE_EVENT_SIGNING_MODE=observe`.
+  - `forbidden_action`: the action is not in `POSTOFFICE_ALLOWED_ACTIONS`, or it is `clear_state` and the worker lacks `ALLOW_CLEAR_STATE=1` (so `scripts/admin.py` no longer clears live workers by default).
+  - `invalid`: the payload failed validation (unknown protocol, a broker kwarg the plugin does not accept, wrong type, bad name or topic) or an ingress rule could not be built; the previous firewall stays in place. The log names the key or type, never the value.
+  - `rate_limited` / `oversize`: the control plane is sending faster than `POSTOFFICE_EVENT_RATE`/`POSTOFFICE_EVENT_BURST` allows (the worker resyncs from Redis to recover) or an event exceeds `POSTOFFICE_MAX_EVENT_BYTES`.
+- Details: [Securing the Control Plane](distributed-plane.md#securing-the-control-plane).
+
 ---
 
 ## Frequently Asked Questions
 
 ### Does PostOffice require Docker to run unit tests?
-**No.** All 106 unit tests in the `tests/` directory hermetically mock external brokers and Redis offline. Tests execute in ~0.4s without any external services running.
+**No.** All 500+ unit tests in the `tests/` directory hermetically mock external brokers and Redis offline. Tests execute in a couple of seconds without any external services running.
 
 ### How fast is the TopicTrie matching engine?
 The `TopicTrie` operates in $O(k)$ time relative to topic depth $k$ rather than route count $N$. At 10,000 registered routes, `TopicTrie` lookups take ~26 microseconds (over 648x faster than linear scanning).

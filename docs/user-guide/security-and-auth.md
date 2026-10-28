@@ -178,6 +178,9 @@ po.reload_broker_security("secure_kafka", rotated_security_config)
 
 During hot-reload, each broker adapter (`MqttClient`, `NanoMqClient`, `AmqpClient`, `KafkaClient`) gracefully tears down its old transport session, rebuilds its TLS/SASL context, reconnects, replays all registered topic subscriptions (`_subscriptions`), and flushes any buffered outbound messages (`_publish_buffer`).
 
+> [!NOTE]
+> Credentials travel through Redis in these events. Enable Redis authentication/TLS, and sign events and stored state with `POSTOFFICE_EVENT_KEYS` so a party with Redis access cannot forge a broker or credential change. Signing protects integrity, not confidentiality: anyone who can read the Redis hashes can still read `security_config`. See [Securing the Control Plane](distributed-plane.md#securing-the-control-plane).
+
 ---
 
 ## Testing & Development (Skipping Verification)

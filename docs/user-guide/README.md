@@ -159,7 +159,7 @@ Detailed walkthroughs and recipes for each major capability:
 - **[Dynamic Schema Registry & Serialization](schema-transformation.md):** Register Avro and Protobuf schemas, convert payloads dynamically, and format Confluent wire headers.
 - **[Operational Resiliency, Queuing & Circuit Breakers](resiliency-and-circuit-breakers.md):** Configure offline subscription replay, bounded publish buffers (`reject` / `drop_oldest`), egress circuit breakers, and live credential hot-reload.
 - **[Observability & Dead Letter Queues](observability-and-dlq.md):** Configure Prometheus scraping, track routing histograms, and isolate poison pills via DLQ JSON envelopes.
-- **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub.
+- **[Distributed Control Plane & Data Plane](distributed-plane.md):** Deploy horizontal DataPlane workers synchronized via Redis Pub/Sub, sign and rate-limit control events, and distribute ingress rules.
 - **[Production Security, TLS/mTLS & Authentication](security-and-auth.md):** Configure TLS socket encryption, client certificates (mTLS), SASL authentication, and zero-downtime credential rotation across all brokers.
 
 ---
