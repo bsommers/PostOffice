@@ -2,6 +2,10 @@
 
 > **Status:** Phase 0 Complete (Slices P0-1, P0-2, P0-3, P0-4) recorded 2026-10-31.
 > **Plans & ADR:** [`NATIVE_REWRITE_PLAN.md`](../.planning/reviews/NATIVE_REWRITE_PLAN.md) (§0.1 SLOs, §4 Phase 0), [`PERFORMANCE_TEST_PLAN.md`](../.planning/reviews/PERFORMANCE_TEST_PLAN.md) (T1 & T2 / P-A & P-B), and [`docs/adr/0001-native-data-plane-language.md`](adr/0001-native-data-plane-language.md).
+> **Raw Result Artifacts (`postoffice.perf.result/v1`):**
+> - [`docs/benchmarks/phase0-t1-micro-python.json`](benchmarks/phase0-t1-micro-python.json)
+> - [`docs/benchmarks/phase0-t2-python-baseline.json`](benchmarks/phase0-t2-python-baseline.json)
+> - [`docs/benchmarks/phase0-t2-rust-vs-go-bakeoff.json`](benchmarks/phase0-t2-rust-vs-go-bakeoff.json)
 
 ## 1. Environment & Methodology
 

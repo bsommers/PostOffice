@@ -1,0 +1,107 @@
+{
+  "created_at": "2026-10-31T01:09:38.050912+00:00",
+  "environment": {
+    "cgroup_memory_max": null,
+    "cpu_count": 32,
+    "cpu_governor": "performance",
+    "cpu_model": "AMD Ryzen 9 7950X 16-Core Processor",
+    "host": "Monster",
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.13.7"
+  },
+  "git": {
+    "dirty": true,
+    "sha": "6bcba0b2839a1566ae659a66a9795b8300a519b1"
+  },
+  "metrics": {
+    "benchmarks": {
+      "budgeted_dlq": {
+        "admit+dedupe": {
+          "max": 1615.9,
+          "min": 1506.5,
+          "ns_per_op": 1551.8,
+          "ops_per_s": 644408
+        },
+        "check": {
+          "max": 1206.9,
+          "min": 1185.0,
+          "ns_per_op": 1188.5,
+          "ops_per_s": 841368
+        }
+      },
+      "firewall.evaluate": {
+        "rules=1": {
+          "max": 203.1,
+          "min": 198.5,
+          "ns_per_op": 200.9,
+          "ops_per_s": 4978213
+        },
+        "rules=20": {
+          "max": 14091.0,
+          "min": 13894.1,
+          "ns_per_op": 13957.3,
+          "ops_per_s": 71647
+        },
+        "rules=5": {
+          "max": 3552.6,
+          "min": 3535.0,
+          "ns_per_op": 3544.3,
+          "ops_per_s": 282140
+        },
+        "rules=5+content_guard": {
+          "max": 19668.9,
+          "min": 18792.6,
+          "ns_per_op": 19230.2,
+          "ops_per_s": 52001
+        },
+        "rules=5+ledger": {
+          "max": 3691.4,
+          "min": 3572.0,
+          "ns_per_op": 3599.9,
+          "ops_per_s": 277789
+        }
+      },
+      "token_bucket.try_consume": {
+        "threads=1": {
+          "max": 210.5,
+          "min": 206.5,
+          "ns_per_op": 207.7,
+          "ops_per_s": 4814614
+        },
+        "threads=16": {
+          "max": 233.6,
+          "min": 223.1,
+          "ns_per_op": 228.2,
+          "ops_per_s": 4381788
+        }
+      },
+      "topic_trie.match": {
+        "filters=10": {
+          "max": 869.6,
+          "min": 845.2,
+          "ns_per_op": 846.8,
+          "ops_per_s": 1180925
+        },
+        "filters=1000": {
+          "max": 886.4,
+          "min": 850.2,
+          "ns_per_op": 858.4,
+          "ops_per_s": 1164942
+        },
+        "filters=100000": {
+          "max": 854.7,
+          "min": 839.3,
+          "ns_per_op": 849.3,
+          "ops_per_s": 1177398
+        }
+      }
+    },
+    "iterations": 50000,
+    "repeats": 7
+  },
+  "scenario": "t1-micro-python",
+  "schema": "postoffice.perf.result/v1",
+  "verdict": "info"
+}

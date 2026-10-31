@@ -1,0 +1,175 @@
+{
+  "created_at": "2026-10-31T15:23:59.305703+00:00",
+  "environment": {
+    "cgroup_memory_max": null,
+    "cpu_count": 32,
+    "cpu_governor": "performance",
+    "cpu_model": "AMD Ryzen 9 7950X 16-Core Processor",
+    "host": "Monster",
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.13.7"
+  },
+  "git": {
+    "dirty": true,
+    "sha": "51d682cbeb3718602eef6f1cc527e26f1e5f4d60"
+  },
+  "metrics": {
+    "cells": {
+      "fanout_20_routes": {
+        "max_us": 352.02,
+        "msg_per_s": 17489,
+        "oracle_passed": true,
+        "p50_us": 55.48,
+        "p99_9_us": 327.79,
+        "p99_us": 66.17,
+        "slo_10k_pass": true,
+        "us_per_msg": 57.18
+      },
+      "fanout_5_routes": {
+        "max_us": 207.78,
+        "msg_per_s": 56336,
+        "oracle_passed": true,
+        "p50_us": 16.37,
+        "p99_9_us": 158.22,
+        "p99_us": 24.34,
+        "slo_10k_pass": true,
+        "us_per_msg": 17.75
+      },
+      "firewall_5_rules": {
+        "max_us": 1263.67,
+        "msg_per_s": 87764,
+        "oracle_passed": true,
+        "p50_us": 10.2,
+        "p99_9_us": 132.43,
+        "p99_us": 17.53,
+        "slo_10k_pass": true,
+        "us_per_msg": 11.39
+      },
+      "firewall_5_rules_content_guard": {
+        "max_us": 385.45,
+        "msg_per_s": 39667,
+        "oracle_passed": true,
+        "p50_us": 23.57,
+        "p99_9_us": 160.73,
+        "p99_us": 39.11,
+        "slo_10k_pass": true,
+        "us_per_msg": 25.21
+      },
+      "full_pipeline_fw_cg_avro_wire": {
+        "max_us": 3985.66,
+        "msg_per_s": 33363,
+        "oracle_passed": true,
+        "p50_us": 28.27,
+        "p99_9_us": 209.64,
+        "p99_us": 43.5,
+        "slo_10k_pass": true,
+        "us_per_msg": 29.97
+      },
+      "gil_4_threads_full_pipeline": {
+        "max_us": 30580.24,
+        "msg_per_s": 31103,
+        "oracle_passed": true,
+        "p50_us": 28.25,
+        "p99_9_us": 10959.8,
+        "p99_us": 104.45,
+        "slo_10k_pass": true,
+        "us_per_msg": 32.15
+      },
+      "gil_8_threads_full_pipeline": {
+        "max_us": 8065.51,
+        "msg_per_s": 30483,
+        "oracle_passed": true,
+        "p50_us": 28.44,
+        "p99_9_us": 5221.76,
+        "p99_us": 103.22,
+        "slo_10k_pass": true,
+        "us_per_msg": 32.81
+      },
+      "overload_10x_shedding": {
+        "balanced": true,
+        "delivered": 8,
+        "max_rss_mb": 32.58,
+        "passed": true,
+        "sent": 4000,
+        "shed": 3992
+      },
+      "payload_16kb_passthrough": {
+        "max_us": 146.61,
+        "msg_per_s": 144422,
+        "oracle_passed": true,
+        "p50_us": 5.9,
+        "p99_9_us": 124.25,
+        "p99_us": 10.14,
+        "slo_10k_pass": true,
+        "us_per_msg": 6.92
+      },
+      "payload_64b_passthrough": {
+        "max_us": 3829.99,
+        "msg_per_s": 143282,
+        "oracle_passed": true,
+        "p50_us": 5.89,
+        "p99_9_us": 115.67,
+        "p99_us": 10.02,
+        "slo_10k_pass": true,
+        "us_per_msg": 6.98
+      },
+      "reference_1kb_passthrough": {
+        "max_us": 956.89,
+        "msg_per_s": 104510,
+        "oracle_passed": true,
+        "p50_us": 7.24,
+        "p99_9_us": 125.79,
+        "p99_us": 12.13,
+        "slo_10k_pass": true,
+        "us_per_msg": 9.57
+      },
+      "route_amqp_to_kafka": {
+        "max_us": 149.46,
+        "msg_per_s": 140829,
+        "oracle_passed": true,
+        "p50_us": 5.98,
+        "p99_9_us": 122.79,
+        "p99_us": 9.98,
+        "slo_10k_pass": true,
+        "us_per_msg": 7.1
+      },
+      "route_mqtt_to_amqp": {
+        "max_us": 184.65,
+        "msg_per_s": 141267,
+        "oracle_passed": true,
+        "p50_us": 5.93,
+        "p99_9_us": 122.34,
+        "p99_us": 10.45,
+        "slo_10k_pass": true,
+        "us_per_msg": 7.08
+      },
+      "schema_json_to_avro_wire": {
+        "max_us": 179.58,
+        "msg_per_s": 88523,
+        "oracle_passed": true,
+        "p50_us": 10.05,
+        "p99_9_us": 153.69,
+        "p99_us": 17.05,
+        "slo_10k_pass": true,
+        "us_per_msg": 11.3
+      },
+      "schema_json_to_protobuf": {
+        "max_us": 672.2,
+        "msg_per_s": 36138,
+        "oracle_passed": true,
+        "p50_us": 25.81,
+        "p99_9_us": 205.71,
+        "p99_us": 47.21,
+        "slo_10k_pass": true,
+        "us_per_msg": 27.67
+      }
+    },
+    "iterations": 4000,
+    "repeats": 5
+  },
+  "scenario": "t2-python-baseline",
+  "schema": "postoffice.perf.result/v1",
+  "verdict": "info"
+}

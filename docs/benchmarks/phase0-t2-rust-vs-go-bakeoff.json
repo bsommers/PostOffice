@@ -1,0 +1,144 @@
+{
+  "created_at": "2026-10-31T16:03:01.628612+00:00",
+  "environment": {
+    "cgroup_memory_max": null,
+    "cpu_count": 32,
+    "cpu_governor": "performance",
+    "cpu_model": "AMD Ryzen 9 7950X 16-Core Processor",
+    "host": "Monster",
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.13.7"
+  },
+  "git": {
+    "dirty": true,
+    "sha": "73b6d2cc7066778a6c9b3cfa9adb66b0ec394233"
+  },
+  "metrics": {
+    "bakeoff": {
+      "go": {
+        "binary_bytes": 1806498,
+        "binary_kb": 1764.2,
+        "build_ms": 34.1,
+        "cells": {
+          "overload_10x": {
+            "balanced": true,
+            "budget_bytes": 10240,
+            "delivered": 8,
+            "passed": true,
+            "peak_governor_bytes": 8192,
+            "sent": 100000,
+            "shed": 99992,
+            "shed_limit_bytes": 8192
+          },
+          "threads_1_full": {
+            "delivered": 100000,
+            "max_ns": 289458,
+            "msg_per_s": 140063,
+            "oracle_passed": true,
+            "p50_ns": 6980,
+            "p99_9_ns": 14056,
+            "p99_ns": 10056,
+            "sent": 100000
+          },
+          "threads_1_passthrough": {
+            "delivered": 100000,
+            "max_ns": 439076,
+            "msg_per_s": 159712,
+            "oracle_passed": true,
+            "p50_ns": 6128,
+            "p99_9_ns": 13064,
+            "p99_ns": 9032,
+            "sent": 100000
+          },
+          "threads_4_full": {
+            "delivered": 100000,
+            "max_ns": 419320,
+            "msg_per_s": 535176,
+            "oracle_passed": true,
+            "p50_ns": 7084,
+            "p99_9_ns": 21536,
+            "p99_ns": 10464,
+            "sent": 100000
+          },
+          "threads_8_full": {
+            "delivered": 100000,
+            "max_ns": 3353586,
+            "msg_per_s": 995274,
+            "oracle_passed": true,
+            "p50_ns": 7432,
+            "p99_9_ns": 30208,
+            "p99_ns": 10904,
+            "sent": 100000
+          }
+        },
+        "language": "go",
+        "max_rss_kb": 9932
+      },
+      "rust": {
+        "binary_bytes": 540576,
+        "binary_kb": 527.9,
+        "build_ms": 37.0,
+        "cells": {
+          "overload_10x": {
+            "balanced": true,
+            "budget_bytes": 10240,
+            "delivered": 8,
+            "passed": true,
+            "peak_governor_bytes": 8192,
+            "sent": 100000,
+            "shed": 99992,
+            "shed_limit_bytes": 8192
+          },
+          "threads_1_full": {
+            "delivered": 100000,
+            "max_ns": 54992,
+            "msg_per_s": 222976,
+            "oracle_passed": true,
+            "p50_ns": 4356,
+            "p99_9_ns": 9824,
+            "p99_ns": 6080,
+            "sent": 100000
+          },
+          "threads_1_passthrough": {
+            "delivered": 100000,
+            "max_ns": 1153576,
+            "msg_per_s": 284366,
+            "oracle_passed": true,
+            "p50_ns": 3436,
+            "p99_9_ns": 7832,
+            "p99_ns": 4276,
+            "sent": 100000
+          },
+          "threads_4_full": {
+            "delivered": 100000,
+            "max_ns": 203138,
+            "msg_per_s": 852442,
+            "oracle_passed": true,
+            "p50_ns": 4428,
+            "p99_9_ns": 8720,
+            "p99_ns": 6128,
+            "sent": 100000
+          },
+          "threads_8_full": {
+            "delivered": 100000,
+            "max_ns": 37950,
+            "msg_per_s": 1586661,
+            "oracle_passed": true,
+            "p50_ns": 4816,
+            "p99_9_ns": 9656,
+            "p99_ns": 6460,
+            "sent": 100000
+          }
+        },
+        "language": "rust",
+        "max_rss_kb": 4464
+      }
+    },
+    "messages": 100000
+  },
+  "scenario": "t2-rust-vs-go-bakeoff",
+  "schema": "postoffice.perf.result/v1",
+  "verdict": "info"
+}
