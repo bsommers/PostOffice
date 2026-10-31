@@ -8,10 +8,12 @@ Off the data path. Plans: [`PERFORMANCE_TEST_PLAN.md`](../.planning/reviews/PERF
 | `oracle.py` | Message-accounting oracle: lost, duplicated, reordered, corrupted, latency; checks `sent = delivered + dlq + shed + dropped + in_flight`. |
 | `results.py` | Results document `postoffice.perf.result/v1` with git SHA and environment. |
 | `micro.py` | T1 micro-benchmarks of the Python components (trie, token bucket, DLQ budget, firewall chains). |
+| `loadgen/` | Rust open-loop load generator and accounting sink (`postoffice-loadgen`): byte-identical `POB1` header, logarithmic HdrHistogram with coordinated-omission correction, MQTT v3.1.1 publisher/sink, and in-memory loopback verifier. |
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m perf.micro [--quick] [--out perf/results]
-PYTHONPATH=src .venv/bin/python -m unittest tests/test_perf_oracle.py
+PYTHONPATH=src .venv/bin/python -m unittest tests/test_perf_oracle.py tests/test_perf_loadgen.py
+cargo test --manifest-path perf/loadgen/Cargo.toml -q
 ```
 
 `perf/results/` is git-ignored. Only reviewed baselines go into `docs/BENCHMARKS.md`.

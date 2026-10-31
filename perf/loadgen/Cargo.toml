@@ -1,0 +1,13 @@
+[package]
+name = "postoffice-loadgen"
+version = "0.1.0"
+edition = "2021"
+description = "Open-loop multi-protocol load generator and accounting sink for PostOffice"
+
+[lib]
+name = "postoffice_loadgen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "postoffice-loadgen"
+path = "src/main.rs"
