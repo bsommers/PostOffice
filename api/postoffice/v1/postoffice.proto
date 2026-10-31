@@ -1,0 +1,354 @@
+// PostOffice Platform API — Protobuf v3 IDL (v1)
+//
+// Versioning & Compatibility Contract:
+//   - Package `postoffice.v1` is strictly additive-only within v1.
+//   - Existing field numbers and wire types MUST NEVER be renumbered, reused, or repurposed.
+//   - Removed fields MUST have both their field number and field name marked `reserved`.
+//   - New optional fields may be appended with higher field numbers; older clients and servers
+//     ignore unknown fields cleanly.
+//   - Breaking wire or semantic changes require a new package version (`postoffice.v2`).
+
+syntax = "proto3";
+
+package postoffice.v1;
+
+option go_package = "github.com/meso/postoffice/api/postoffice/v1;postofficev1";
+option java_multiple_files = true;
+option java_package = "io.meso.postoffice.v1";
+
+// ============================================================================
+// Enumerations
+// ============================================================================
+
+enum UnroutablePolicy {
+  UNROUTABLE_POLICY_UNSPECIFIED = 0;
+  UNROUTABLE_POLICY_NACK = 1;
+  UNROUTABLE_POLICY_DLQ = 2;
+  UNROUTABLE_POLICY_DROP = 3;
+}
+
+enum FirewallVerdictKind {
+  FIREWALL_VERDICT_KIND_UNSPECIFIED = 0;
+  FIREWALL_VERDICT_KIND_ALLOW = 1;
+  FIREWALL_VERDICT_KIND_DROP = 2;
+  FIREWALL_VERDICT_KIND_REJECT = 3;
+}
+
+enum SchemaType {
+  SCHEMA_TYPE_UNSPECIFIED = 0;
+  SCHEMA_TYPE_JSON = 1;
+  SCHEMA_TYPE_AVRO = 2;
+  SCHEMA_TYPE_PROTOBUF = 3;
+}
+
+enum SigningMode {
+  SIGNING_MODE_UNSPECIFIED = 0;
+  SIGNING_MODE_PERMISSIVE = 1;
+  SIGNING_MODE_WARN = 2;
+  SIGNING_MODE_REQUIRED = 3;
+}
+
+// ============================================================================
+// Common Envelope & Mutation Ack
+// ============================================================================
+
+message MutationAck {
+  bool ok = 1;
+  uint64 version = 2;
+  uint32 schema_version = 3;
+  string message = 4;
+}
+
+message EmptyRequest {}
+
+// ============================================================================
+// Admin Service Messages
+// ============================================================================
+
+message TlsConfig {
+  bool enabled = 1;
+  string ca_certs = 2;
+  string certfile = 3;
+  string keyfile = 4;
+  bool insecure = 5;
+}
+
+message SaslConfig {
+  string mechanism = 1;
+  string username = 2;
+  string password = 3;
+}
+
+message BrokerSecurityConfig {
+  TlsConfig tls = 1;
+  SaslConfig sasl = 2;
+  map<string, string> extra = 3;
+}
+
+message RegisterBrokerRequest {
+  string name = 1;
+  string type = 2;
+  string config_json = 3;
+  BrokerSecurityConfig security = 4;
+}
+
+message RemoveBrokerRequest {
+  string name = 1;
+}
+
+message UpdateBrokerSecurityRequest {
+  string name = 1;
+  BrokerSecurityConfig security = 2;
+}
+
+message RouteTarget {
+  string broker = 1;
+  string topic = 2;
+}
+
+message RouteSchemaMapping {
+  int32 source_schema_id = 1;
+  int32 target_schema_id = 2;
+  bool strict = 3;
+}
+
+message AddRouteRequest {
+  string source_broker = 1;
+  string source_topic = 2;
+  string target_broker = 3;
+  string target_topic = 4;
+  repeated RouteTarget targets = 5;
+  bool semantic_translation = 6;
+  RouteSchemaMapping schema_mapping = 7;
+}
+
+message RemoveRouteRequest {
+  string source_broker = 1;
+  string source_topic = 2;
+  string target_broker = 3;
+  string target_topic = 4;
+}
+
+message AddSubscriptionRequest {
+  string broker = 1;
+  string topic = 2;
+  int32 qos = 3;
+  bool auto_ack = 4;
+}
+
+message TopicShapeRule {
+  uint32 max_length = 1;
+  uint32 max_depth = 2;
+  bool forbid_wildcards_in_publish = 3;
+  repeated string allow = 4;
+  repeated string deny = 5;
+}
+
+message RateLimitRule {
+  double per_sender_msgs_per_sec = 1;
+  double per_sender_bytes_per_sec = 2;
+  double burst_allowance_seconds = 3;
+}
+
+message ContentFieldRule {
+  string path = 1;
+  bool required = 2;
+  string type = 3;
+  bool has_min = 4;
+  double min_value = 5;
+  bool has_max = 6;
+  double max_value = 7;
+  repeated string enum_values = 8;
+  string pattern = 9;
+  uint32 max_length = 10;
+}
+
+message ContentGuardRule {
+  string content_type = 1;
+  uint32 max_depth = 2;
+  uint32 max_string_bytes = 3;
+  uint32 max_keys = 4;
+  repeated ContentFieldRule fields = 5;
+}
+
+message QuarantineRule {
+  uint32 strikes = 1;
+  double window_seconds = 2;
+  double cooldown_seconds = 3;
+}
+
+message SetIngressRequest {
+  uint64 max_payload_bytes = 1;
+  TopicShapeRule topic_shape = 2;
+  RateLimitRule rate_limit = 3;
+  ContentGuardRule content_guard = 4;
+  QuarantineRule quarantine = 5;
+  map<string, string> per_broker_rules_json = 6;
+  map<string, string> per_route_rules_json = 7;
+}
+
+message DlqBudgetSpec {
+  double max_msgs_per_sec = 1;
+  double max_bytes_per_sec = 2;
+  uint64 max_payload_bytes = 3;
+  double dedupe_window_seconds = 4;
+  uint32 dedupe_max_entries = 5;
+}
+
+message SetDlqRequest {
+  string broker = 1;
+  string topic = 2;
+  DlqBudgetSpec budget = 3;
+}
+
+message SetUnroutablePolicyRequest {
+  UnroutablePolicy policy = 1;
+}
+
+message RegisterSchemaRequest {
+  int32 schema_id = 1;
+  SchemaType schema_type = 2;
+  string definition_json = 3;
+}
+
+message GetSchemaRequest {
+  int32 schema_id = 1;
+}
+
+message GetSchemaResponse {
+  int32 schema_id = 1;
+  SchemaType schema_type = 2;
+  string definition_json = 3;
+  bool found = 4;
+}
+
+// ============================================================================
+// Observe Service Messages
+// ============================================================================
+
+message GetHealthResponse {
+  string status = 1;
+  uint64 uptime_ms = 2;
+  string version = 3;
+}
+
+message BrokerReadiness {
+  string name = 1;
+  string type = 2;
+  bool connected = 3;
+  string circuit_state = 4;
+}
+
+message GetReadyResponse {
+  bool ready = 1;
+  uint64 applied_version = 2;
+  SigningMode signing_mode = 3;
+  repeated BrokerReadiness brokers = 4;
+}
+
+message SenderOffenderRecord {
+  string sender_id = 1;
+  uint64 total_violations = 2;
+  map<string, uint64> by_rule = 3;
+  bool quarantined = 4;
+  double quarantined_until = 5;
+  string last_reason = 6;
+  string likely_cause = 7;
+}
+
+message GetSenderReportRequest {
+  uint32 limit = 1;
+  string sender_id = 2;
+}
+
+message GetSenderReportResponse {
+  repeated SenderOffenderRecord offenders = 1;
+}
+
+message GetStatsResponse {
+  uint64 applied_version = 1;
+  uint32 active_brokers = 2;
+  uint32 active_routes = 3;
+  uint64 memory_in_use_bytes = 4;
+  uint64 memory_budget_bytes = 5;
+  uint64 memory_shed_total = 6;
+  map<string, uint64> dlq_stats = 7;
+}
+
+message GetMetricsResponse {
+  string content_type = 1;
+  string prometheus_text = 2;
+}
+
+// ============================================================================
+// Stream Service Messages
+// ============================================================================
+
+message PublishRequest {
+  string broker = 1;
+  string topic = 2;
+  bytes payload = 3;
+  string sender_id = 4;
+  map<string, string> metadata = 5;
+  int32 schema_id = 6;
+}
+
+message PublishResponse {
+  bool accepted = 1;
+  FirewallVerdictKind firewall_verdict = 2;
+  string rule = 3;
+  string reason = 4;
+  uint32 targets_delivered = 5;
+  uint32 targets_failed = 6;
+  bool dlq_recorded = 7;
+}
+
+message SubscribeControl {
+  string broker = 1;
+  string topic_filter = 2;
+  int32 qos = 3;
+  uint64 ack_delivery_id = 4;
+  uint64 nack_delivery_id = 5;
+  bool requeue = 6;
+}
+
+message StreamDelivery {
+  uint64 delivery_id = 1;
+  string source_broker = 2;
+  string source_topic = 3;
+  bytes payload = 4;
+  uint64 timestamp_ns = 5;
+  map<string, string> metadata = 6;
+}
+
+// ============================================================================
+// Services
+// ============================================================================
+
+service AdminService {
+  rpc RegisterBroker(RegisterBrokerRequest) returns (MutationAck);
+  rpc RemoveBroker(RemoveBrokerRequest) returns (MutationAck);
+  rpc UpdateBrokerSecurity(UpdateBrokerSecurityRequest) returns (MutationAck);
+  rpc AddRoute(AddRouteRequest) returns (MutationAck);
+  rpc RemoveRoute(RemoveRouteRequest) returns (MutationAck);
+  rpc AddSubscription(AddSubscriptionRequest) returns (MutationAck);
+  rpc SetIngress(SetIngressRequest) returns (MutationAck);
+  rpc SetDlq(SetDlqRequest) returns (MutationAck);
+  rpc SetUnroutablePolicy(SetUnroutablePolicyRequest) returns (MutationAck);
+  rpc RegisterSchema(RegisterSchemaRequest) returns (MutationAck);
+  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse);
+  rpc ClearState(EmptyRequest) returns (MutationAck);
+}
+
+service ObserveService {
+  rpc GetHealth(EmptyRequest) returns (GetHealthResponse);
+  rpc GetReady(EmptyRequest) returns (GetReadyResponse);
+  rpc GetSenderReport(GetSenderReportRequest) returns (GetSenderReportResponse);
+  rpc GetStats(EmptyRequest) returns (GetStatsResponse);
+  rpc GetMetrics(EmptyRequest) returns (GetMetricsResponse);
+}
+
+service StreamService {
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  rpc Subscribe(stream SubscribeControl) returns (stream StreamDelivery);
+}

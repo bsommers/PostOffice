@@ -1,0 +1,950 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PostOffice Platform API",
+    "version": "1.0.0",
+    "description": "Language-neutral REST/JSON API for the PostOffice Control Plane, Observability endpoints, and Stream publish/subscribe gateway. Mirrors `api/postoffice/v1/postoffice.proto` (`postoffice.v1`)."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080",
+      "description": "Local PostOffice API server"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "mtlsAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/admin/brokers": {
+      "post": {
+        "operationId": "RegisterBroker",
+        "summary": "Register or update a broker connection",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrokerConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Broker registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/brokers/{name}": {
+      "delete": {
+        "operationId": "RemoveBroker",
+        "summary": "Remove a registered broker",
+        "tags": ["Admin"],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Broker removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/brokers/{name}/security": {
+      "put": {
+        "operationId": "UpdateBrokerSecurity",
+        "summary": "Rotate or update TLS/SASL credentials on a registered broker",
+        "tags": ["Admin"],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrokerSecurityConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Broker security updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/routes": {
+      "post": {
+        "operationId": "AddRoute",
+        "summary": "Register an idempotent single-target or fan-out route",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Route added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "RemoveRoute",
+        "summary": "Remove a route from a source broker and topic pattern",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveRouteSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Route removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/subscriptions": {
+      "post": {
+        "operationId": "AddSubscription",
+        "summary": "Add an ingress broker topic subscription",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/ingress": {
+      "put": {
+        "operationId": "SetIngress",
+        "summary": "Replace the active ingress firewall ruleset",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngressRules"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ingress firewall rules updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/dlq": {
+      "put": {
+        "operationId": "SetDlq",
+        "summary": "Configure the Dead-Letter Queue destination and optional budget",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DlqConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "DLQ configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/unroutable-policy": {
+      "put": {
+        "operationId": "SetUnroutablePolicy",
+        "summary": "Set the unroutable message policy (nack, dlq, or drop)",
+        "tags": ["Admin"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnroutablePolicySpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unroutable policy updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/schemas/{schema_id}": {
+      "put": {
+        "operationId": "RegisterSchema",
+        "summary": "Register an Avro, Protobuf, or JSON Schema by integer ID",
+        "tags": ["Admin"],
+        "parameters": [
+          {
+            "name": "schema_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaRegistration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schema registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "GetSchema",
+        "summary": "Fetch a registered schema by integer ID",
+        "tags": ["Admin"],
+        "parameters": [
+          {
+            "name": "schema_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schema definition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaRegistration"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schema not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/state": {
+      "delete": {
+        "operationId": "ClearState",
+        "summary": "Clear control-plane state and increment monotonic version",
+        "tags": ["Admin"],
+        "responses": {
+          "200": {
+            "description": "State cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationAck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observe/healthz": {
+      "get": {
+        "operationId": "GetHealth",
+        "summary": "Liveness probe",
+        "tags": ["Observe"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Process alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observe/readyz": {
+      "get": {
+        "operationId": "GetReady",
+        "summary": "Readiness probe including control-plane version and broker states",
+        "tags": ["Observe"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Readiness report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observe/senders": {
+      "get": {
+        "operationId": "GetSenderReport",
+        "summary": "Inspect SenderLedger offender records and quarantine status",
+        "tags": ["Observe"],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "sender_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sender offender report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderReportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observe/stats": {
+      "get": {
+        "operationId": "GetStats",
+        "summary": "Engine runtime statistics, memory governor usage, and DLQ counters",
+        "tags": ["Observe"],
+        "responses": {
+          "200": {
+            "description": "Runtime statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observe/metrics": {
+      "get": {
+        "operationId": "GetMetrics",
+        "summary": "Prometheus text exposition format scrape endpoint",
+        "tags": ["Observe"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus exposition format",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stream/publish": {
+      "post": {
+        "operationId": "Publish",
+        "summary": "Publish a message through the PostOffice ingress firewall and router",
+        "tags": ["Stream"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Publish result and firewall/routing verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stream/subscribe": {
+      "get": {
+        "operationId": "Subscribe",
+        "summary": "WebSocket / NDJSON streaming subscription with explicit ack/nack frames",
+        "tags": ["Stream"],
+        "parameters": [
+          {
+            "name": "broker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topic_filter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream of delivery frames",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamFrame"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "HMAC-SHA256-Token"
+      },
+      "mtlsAuth": {
+        "type": "mutualTLS"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "MutationAck": {
+        "type": "object",
+        "required": ["ok", "version", "schema_version"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "BrokerSecurityConfig": {
+        "type": "object",
+        "properties": {
+          "tls": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "ca_certs": { "type": "string" },
+              "certfile": { "type": "string" },
+              "keyfile": { "type": "string" },
+              "insecure": { "type": "boolean" }
+            }
+          },
+          "sasl": {
+            "type": "object",
+            "properties": {
+              "mechanism": { "type": "string" },
+              "username": { "type": "string" },
+              "password": { "type": "string" }
+            }
+          }
+        }
+      },
+      "BrokerConfig": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": ["mqtt", "amqp", "kafka", "nanomq", "mock"]
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "security": {
+            "$ref": "#/components/schemas/BrokerSecurityConfig"
+          }
+        }
+      },
+      "RouteSpec": {
+        "type": "object",
+        "required": ["source_broker", "source_topic"],
+        "properties": {
+          "source_broker": { "type": "string" },
+          "source_topic": { "type": "string" },
+          "target_broker": { "type": "string" },
+          "target_topic": { "type": "string" },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["broker", "topic"],
+              "properties": {
+                "broker": { "type": "string" },
+                "topic": { "type": "string" }
+              }
+            }
+          },
+          "semantic_translation": {
+            "type": "boolean",
+            "default": false
+          },
+          "schema_mapping": {
+            "type": "object",
+            "properties": {
+              "source_schema_id": { "type": "integer" },
+              "target_schema_id": { "type": "integer" },
+              "strict": { "type": "boolean", "default": true }
+            }
+          }
+        }
+      },
+      "RemoveRouteSpec": {
+        "type": "object",
+        "required": ["source_broker", "source_topic"],
+        "properties": {
+          "source_broker": { "type": "string" },
+          "source_topic": { "type": "string" },
+          "target_broker": { "type": "string" },
+          "target_topic": { "type": "string" }
+        }
+      },
+      "SubscriptionSpec": {
+        "type": "object",
+        "required": ["broker", "topic"],
+        "properties": {
+          "broker": { "type": "string" },
+          "topic": { "type": "string" },
+          "qos": { "type": "integer", "enum": [0, 1, 2], "default": 0 },
+          "auto_ack": { "type": "boolean", "default": true }
+        }
+      },
+      "IngressRules": {
+        "type": "object",
+        "properties": {
+          "max_payload_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "topic_shape": {
+            "type": "object",
+            "properties": {
+              "max_length": { "type": "integer", "minimum": 1 },
+              "max_depth": { "type": "integer", "minimum": 1 },
+              "forbid_wildcards_in_publish": { "type": "boolean" },
+              "allow": { "type": "array", "items": { "type": "string" } },
+              "deny": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "rate_limit": {
+            "type": "object",
+            "properties": {
+              "per_sender_msgs_per_sec": { "type": "number", "exclusiveMinimum": 0 },
+              "per_sender_bytes_per_sec": { "type": "number", "exclusiveMinimum": 0 },
+              "burst_allowance_seconds": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "content_guard": {
+            "type": "object",
+            "properties": {
+              "content_type": { "type": "string", "enum": ["application/json"] },
+              "max_depth": { "type": "integer", "minimum": 1 },
+              "max_string_bytes": { "type": "integer", "minimum": 1 },
+              "max_keys": { "type": "integer", "minimum": 1 },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path"],
+                  "properties": {
+                    "path": { "type": "string" },
+                    "required": { "type": "boolean" },
+                    "type": { "type": "string", "enum": ["number", "int", "string", "bool", "object", "array"] },
+                    "min": { "type": "number" },
+                    "max": { "type": "number" },
+                    "enum": { "type": "array" },
+                    "pattern": { "type": "string" },
+                    "max_length": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            }
+          },
+          "quarantine": {
+            "type": "object",
+            "properties": {
+              "strikes": { "type": "integer", "minimum": 1 },
+              "window_seconds": { "type": "number", "exclusiveMinimum": 0 },
+              "cooldown_seconds": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "per_broker": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/IngressRules" }
+          },
+          "per_route": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/IngressRules" }
+          }
+        }
+      },
+      "DlqConfig": {
+        "type": "object",
+        "required": ["broker", "topic"],
+        "properties": {
+          "broker": { "type": "string" },
+          "topic": { "type": "string" },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "max_msgs_per_sec": { "type": "number" },
+              "max_bytes_per_sec": { "type": "number" },
+              "max_payload_bytes": { "type": "integer" },
+              "dedupe_window_seconds": { "type": "number" },
+              "dedupe_max_entries": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "UnroutablePolicySpec": {
+        "type": "object",
+        "required": ["policy"],
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": ["nack", "dlq", "drop"]
+          }
+        }
+      },
+      "SchemaRegistration": {
+        "type": "object",
+        "required": ["schema_id", "schema_type", "definition"],
+        "properties": {
+          "schema_id": { "type": "integer", "minimum": 1 },
+          "schema_type": { "type": "string", "enum": ["json", "avro", "protobuf"] },
+          "definition": {}
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "version"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ok"] },
+          "uptime_ms": { "type": "integer" },
+          "version": { "type": "string" }
+        }
+      },
+      "ReadyResponse": {
+        "type": "object",
+        "required": ["ready", "applied_version", "signing_mode", "brokers"],
+        "properties": {
+          "ready": { "type": "boolean" },
+          "applied_version": { "type": "integer" },
+          "signing_mode": { "type": "string", "enum": ["permissive", "warn", "required"] },
+          "brokers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "connected"],
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "connected": { "type": "boolean" },
+                "circuit_state": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "SenderReportResponse": {
+        "type": "object",
+        "required": ["offenders"],
+        "properties": {
+          "offenders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["sender_id", "total_violations", "by_rule", "quarantined", "likely_cause"],
+              "properties": {
+                "sender_id": { "type": "string" },
+                "total_violations": { "type": "integer" },
+                "by_rule": { "type": "object", "additionalProperties": { "type": "integer" } },
+                "quarantined": { "type": "boolean" },
+                "quarantined_until": { "type": ["number", "null"] },
+                "last_reason": { "type": "string" },
+                "likely_cause": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "StatsResponse": {
+        "type": "object",
+        "required": ["applied_version", "active_brokers", "active_routes", "memory_in_use_bytes", "memory_budget_bytes"],
+        "properties": {
+          "applied_version": { "type": "integer" },
+          "active_brokers": { "type": "integer" },
+          "active_routes": { "type": "integer" },
+          "memory_in_use_bytes": { "type": "integer" },
+          "memory_budget_bytes": { "type": "integer" },
+          "memory_shed_total": { "type": "integer" },
+          "dlq_stats": { "type": "object", "additionalProperties": { "type": "integer" } }
+        }
+      },
+      "PublishRequest": {
+        "type": "object",
+        "required": ["broker", "topic"],
+        "properties": {
+          "broker": { "type": "string" },
+          "topic": { "type": "string" },
+          "payload": { "type": "string", "description": "UTF-8 string or base64-encoded payload when is_base64=true" },
+          "is_base64": { "type": "boolean", "default": false },
+          "sender_id": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "schema_id": { "type": "integer" }
+        }
+      },
+      "PublishResponse": {
+        "type": "object",
+        "required": ["accepted", "firewall_verdict"],
+        "properties": {
+          "accepted": { "type": "boolean" },
+          "firewall_verdict": { "type": "string", "enum": ["allow", "drop", "reject"] },
+          "rule": { "type": "string" },
+          "reason": { "type": "string" },
+          "targets_delivered": { "type": "integer" },
+          "targets_failed": { "type": "integer" },
+          "dlq_recorded": { "type": "boolean" }
+        }
+      },
+      "StreamFrame": {
+        "type": "object",
+        "required": ["delivery_id", "source_broker", "source_topic", "payload", "is_base64", "timestamp_ns"],
+        "properties": {
+          "delivery_id": { "type": "integer" },
+          "source_broker": { "type": "string" },
+          "source_topic": { "type": "string" },
+          "payload": { "type": "string" },
+          "is_base64": { "type": "boolean" },
+          "timestamp_ns": { "type": "integer" },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "StreamAck": {
+        "type": "object",
+        "required": ["delivery_id", "action"],
+        "properties": {
+          "delivery_id": { "type": "integer" },
+          "action": { "type": "string", "enum": ["ack", "nack"] },
+          "requeue": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}
