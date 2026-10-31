@@ -1,0 +1,268 @@
+{
+  "final_sender_report": [
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "cooled": 1,
+        "malformed": 3
+      },
+      "cooled_until": 1033.0,
+      "first_seen": 1001.0,
+      "last_seen": 1004.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "dev-q",
+      "total": 4,
+      "window": 4
+    },
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "oversize": 1
+      },
+      "cooled_until": null,
+      "first_seen": 1000.0,
+      "last_seen": 1000.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "dev-b",
+      "total": 1,
+      "window": 1
+    },
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "forbidden_topic": 1
+      },
+      "cooled_until": null,
+      "first_seen": 1000.0,
+      "last_seen": 1000.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "admin",
+      "total": 1,
+      "window": 1
+    },
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "forbidden_topic": 1
+      },
+      "cooled_until": null,
+      "first_seen": 1000.0,
+      "last_seen": 1000.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "$SYS/broker/load",
+      "total": 1,
+      "window": 1
+    },
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "schema_mismatch": 1
+      },
+      "cooled_until": null,
+      "first_seen": 1000.0,
+      "last_seen": 1000.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "dev-c",
+      "total": 1,
+      "window": 1
+    },
+    {
+      "broker": "mqtt_edge",
+      "categories": {
+        "rate_exceeded": 1
+      },
+      "cooled_until": null,
+      "first_seen": 1000.0,
+      "last_seen": 1000.0,
+      "likely_cause": "insufficient_data",
+      "previous_window": 0,
+      "rising": false,
+      "sender": "dev-r",
+      "total": 1,
+      "window": 1
+    }
+  ],
+  "schema_version": 1,
+  "steps": [
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "allow",
+        "category": null,
+        "reason": null,
+        "rule": null
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\"}",
+      "step": "valid_message_1",
+      "topic": "devices/dev-a/telemetry"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "oversize",
+        "reason": "88 > 64 bytes",
+        "rule": "max_payload_bytes"
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\", \"pad\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+      "step": "oversize_payload",
+      "topic": "devices/dev-b/telemetry"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "forbidden_topic",
+        "reason": "matches denied pattern +/admin",
+        "rule": "topic_shape"
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\"}",
+      "step": "denied_topic_admin",
+      "topic": "devices/admin"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "forbidden_topic",
+        "reason": "matches denied pattern $SYS/#",
+        "rule": "topic_shape"
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\"}",
+      "step": "denied_sys_topic",
+      "topic": "$SYS/broker/load"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "schema_mismatch",
+        "reason": "field 'temp'=999.0 outside {'min': -40.0, 'max': 125.0}",
+        "rule": "content_guard"
+      },
+      "payload_utf8": "{\"temp\": 999.0, \"unit\": \"C\"}",
+      "step": "content_out_of_range",
+      "topic": "devices/dev-c/telemetry"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "allow",
+        "category": null,
+        "reason": null,
+        "rule": null
+      },
+      "payload_utf8": "{\"temp\": 20.0, \"unit\": \"C\"}",
+      "step": "rate_limit_first_allowed",
+      "topic": "devices/dev-r/telemetry"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "allow",
+        "category": null,
+        "reason": null,
+        "rule": null
+      },
+      "payload_utf8": "{\"temp\": 21.0, \"unit\": \"C\"}",
+      "step": "rate_limit_second_allowed",
+      "topic": "devices/dev-r/telemetry"
+    },
+    {
+      "advance_sec": 0.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "drop",
+        "category": "rate_exceeded",
+        "reason": "identity rate limit",
+        "rule": "rate_limit"
+      },
+      "payload_utf8": "{\"temp\": 22.0, \"unit\": \"C\"}",
+      "step": "rate_limit_exceeded_drop",
+      "topic": "devices/dev-r/telemetry"
+    },
+    {
+      "advance_sec": 1.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "malformed",
+        "reason": "invalid json: Expecting value: line 1 column 1 (char 0)",
+        "rule": "content_guard"
+      },
+      "payload_utf8": "not-json",
+      "step": "quarantine_strike_1",
+      "topic": "devices/dev-q/telemetry"
+    },
+    {
+      "advance_sec": 1.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "malformed",
+        "reason": "invalid json: Expecting value: line 1 column 1 (char 0)",
+        "rule": "content_guard"
+      },
+      "payload_utf8": "not-json",
+      "step": "quarantine_strike_2",
+      "topic": "devices/dev-q/telemetry"
+    },
+    {
+      "advance_sec": 1.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "reject",
+        "category": "malformed",
+        "reason": "invalid json: Expecting value: line 1 column 1 (char 0)",
+        "rule": "content_guard"
+      },
+      "payload_utf8": "not-json",
+      "step": "quarantine_strike_3_triggers_cooldown",
+      "topic": "devices/dev-q/telemetry"
+    },
+    {
+      "advance_sec": 1.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "drop",
+        "category": "cooled",
+        "reason": "sender 'dev-q' cooled until 1033",
+        "rule": "cooldown"
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\"}",
+      "step": "quarantined_sender_blocked_even_on_valid_payload",
+      "topic": "devices/dev-q/telemetry"
+    },
+    {
+      "advance_sec": 35.0,
+      "broker": "mqtt_edge",
+      "expected_verdict": {
+        "action": "allow",
+        "category": null,
+        "reason": null,
+        "rule": null
+      },
+      "payload_utf8": "{\"temp\": 22.5, \"unit\": \"C\"}",
+      "step": "quarantine_expired_after_cooldown",
+      "topic": "devices/dev-q/telemetry"
+    }
+  ],
+  "suite": "firewall_verdicts"
+}

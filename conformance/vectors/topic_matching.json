@@ -1,0 +1,171 @@
+{
+  "invalid_patterns": [
+    {
+      "pattern": "sensors/#/temp",
+      "valid": false
+    },
+    {
+      "pattern": "sensors/+room/temp",
+      "valid": false
+    },
+    {
+      "pattern": "sensors/#room",
+      "valid": false
+    }
+  ],
+  "pair_cases": [
+    {
+      "matches": true,
+      "pattern": "#",
+      "topic": "sensors/temp"
+    },
+    {
+      "matches": false,
+      "pattern": "#",
+      "topic": "$SYS/broker/load"
+    },
+    {
+      "matches": false,
+      "pattern": "+/broker/load",
+      "topic": "$SYS/broker/load"
+    },
+    {
+      "matches": true,
+      "pattern": "$SYS/#",
+      "topic": "$SYS/broker/load"
+    },
+    {
+      "matches": true,
+      "pattern": "$SYS/+/load",
+      "topic": "$SYS/broker/load"
+    },
+    {
+      "matches": true,
+      "pattern": "a/+/c",
+      "topic": "a/b/c"
+    },
+    {
+      "matches": false,
+      "pattern": "a/+/c",
+      "topic": "a/b/d"
+    },
+    {
+      "matches": true,
+      "pattern": "a/#",
+      "topic": "a"
+    }
+  ],
+  "registered_patterns": [
+    {
+      "pattern": "sensors/room1/temp",
+      "route_id": "exact_temp"
+    },
+    {
+      "pattern": "sensors/+/temp",
+      "route_id": "single_plus"
+    },
+    {
+      "pattern": "sensors/#",
+      "route_id": "multi_hash"
+    },
+    {
+      "pattern": "#",
+      "route_id": "root_hash"
+    },
+    {
+      "pattern": "+/+/temp",
+      "route_id": "root_plus_two"
+    },
+    {
+      "pattern": "$SYS/#",
+      "route_id": "sys_multi"
+    },
+    {
+      "pattern": "$SYS/+/clients",
+      "route_id": "sys_plus"
+    },
+    {
+      "pattern": "/leading/+",
+      "route_id": "leading_slash"
+    },
+    {
+      "pattern": "trailing/+/",
+      "route_id": "trailing_slash"
+    }
+  ],
+  "schema_version": 1,
+  "suite": "topic_matching",
+  "trie_cases": [
+    {
+      "matched_routes": [
+        "exact_temp",
+        "multi_hash",
+        "root_hash",
+        "root_plus_two",
+        "single_plus"
+      ],
+      "topic": "sensors/room1/temp"
+    },
+    {
+      "matched_routes": [
+        "multi_hash",
+        "root_hash",
+        "root_plus_two",
+        "single_plus"
+      ],
+      "topic": "sensors/room2/temp"
+    },
+    {
+      "matched_routes": [
+        "multi_hash",
+        "root_hash"
+      ],
+      "topic": "sensors/room1/humidity"
+    },
+    {
+      "matched_routes": [
+        "multi_hash",
+        "root_hash"
+      ],
+      "topic": "sensors"
+    },
+    {
+      "matched_routes": [
+        "root_hash",
+        "root_plus_two"
+      ],
+      "topic": "alerts/fire/temp"
+    },
+    {
+      "matched_routes": [
+        "sys_multi",
+        "sys_plus"
+      ],
+      "topic": "$SYS/broker/clients"
+    },
+    {
+      "matched_routes": [
+        "sys_multi"
+      ],
+      "topic": "$SYS/broker/load/1min"
+    },
+    {
+      "matched_routes": [],
+      "topic": "$custom/x/temp"
+    },
+    {
+      "matched_routes": [
+        "leading_slash",
+        "root_hash"
+      ],
+      "topic": "/leading/seg"
+    },
+    {
+      "matched_routes": [
+        "root_hash",
+        "trailing_slash"
+      ],
+      "topic": "trailing/seg/"
+    }
+  ]
+}

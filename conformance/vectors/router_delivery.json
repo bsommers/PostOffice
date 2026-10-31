@@ -1,0 +1,51 @@
+{
+  "cases": [
+    {
+      "acked": false,
+      "case": "unroutable_policy_nack",
+      "dlq_count": 0,
+      "nacked": true,
+      "policy": "nack"
+    },
+    {
+      "acked": true,
+      "case": "unroutable_policy_dlq",
+      "dlq_count": 1,
+      "nacked": false,
+      "policy": "dlq"
+    },
+    {
+      "acked": true,
+      "case": "unroutable_policy_drop",
+      "dlq_count": 0,
+      "nacked": false,
+      "policy": "drop"
+    },
+    {
+      "acked": true,
+      "case": "fanout_with_semantic_translation",
+      "t1_published": [
+        {
+          "kwargs": {
+            "delivery_mode": 2,
+            "semantic_translation": true
+          },
+          "payload_hex": "7b2276223a317d",
+          "topic": "amqp.telemetry"
+        }
+      ],
+      "t2_published": [
+        {
+          "kwargs": {
+            "delivery_mode": 2,
+            "semantic_translation": true
+          },
+          "payload_hex": "7b2276223a317d",
+          "topic": "kafka.telemetry"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "suite": "router_delivery"
+}

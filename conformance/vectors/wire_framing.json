@@ -1,0 +1,72 @@
+{
+  "decoded_avro": {
+    "id": "dev-1",
+    "temp": 21.5
+  },
+  "decoded_proto": {
+    "id": "dev-1",
+    "temp": 21.5
+  },
+  "error_cases": [
+    {
+      "name": "too_short",
+      "raises_error": true,
+      "raw_hex": "000001"
+    },
+    {
+      "name": "bad_magic_byte",
+      "raises_error": true,
+      "raw_hex": "01000000017b7d"
+    }
+  ],
+  "framed_avro_hex": "00000000010a6465762d310000000000803540",
+  "framed_json_hex": "00000000017b226964223a20226465762d31222c202274656d70223a2032312e357d",
+  "framed_proto_hex": "00000000020a056465762d31110000000000803540",
+  "sample_object": {
+    "id": "dev-1",
+    "temp": 21.5
+  },
+  "schema_version": 1,
+  "schemas": [
+    {
+      "definition": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "temp",
+            "type": "double"
+          }
+        ],
+        "name": "Reading",
+        "type": "record"
+      },
+      "name": "reading_avro",
+      "schema_id": 1,
+      "type": "AVRO"
+    },
+    {
+      "definition": {
+        "fields": [
+          {
+            "name": "id",
+            "number": 1,
+            "type": "string"
+          },
+          {
+            "name": "temp",
+            "number": 2,
+            "type": "double"
+          }
+        ],
+        "name": "ReadingProto"
+      },
+      "name": "reading_proto",
+      "schema_id": 2,
+      "type": "PROTOBUF"
+    }
+  ],
+  "suite": "wire_framing"
+}

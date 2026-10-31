@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "suite": "admin_api",
+  "transcript": [
+    {
+      "op": "RegisterBroker:mqtt_in",
+      "resp": {
+        "message": "registered broker mqtt_in",
+        "ok": true,
+        "schema_version": 1,
+        "version": 1
+      }
+    },
+    {
+      "op": "RegisterBroker:amqp_out",
+      "resp": {
+        "message": "registered broker amqp_out",
+        "ok": true,
+        "schema_version": 1,
+        "version": 2
+      }
+    },
+    {
+      "op": "UpdateBrokerSecurity:mqtt_in",
+      "resp": {
+        "message": "updated security for mqtt_in",
+        "ok": true,
+        "schema_version": 1,
+        "version": 3
+      }
+    },
+    {
+      "op": "AddRoute",
+      "resp": {
+        "message": "route added",
+        "ok": true,
+        "schema_version": 1,
+        "version": 4
+      }
+    },
+    {
+      "op": "SetUnroutablePolicy",
+      "resp": {
+        "message": "unroutable policy updated",
+        "ok": true,
+        "schema_version": 1,
+        "version": 5
+      }
+    },
+    {
+      "op": "Publish",
+      "resp": {
+        "accepted": true,
+        "dlq_recorded": false,
+        "firewall_verdict": "allow",
+        "reason": "",
+        "rule": "",
+        "targets_delivered": 1,
+        "targets_failed": 0
+      }
+    },
+    {
+      "op": "PollSubscription",
+      "resp": [
+        {
+          "delivery_id": 1,
+          "metadata": {
+            "delivery_mode": 2,
+            "semantic_translation": true
+          },
+          "payload_hex": "7b2263223a32352e307d",
+          "source_broker": "amqp_out",
+          "source_topic": "enterprise/temp",
+          "timestamp_ns": 1761868800000000000
+        }
+      ]
+    },
+    {
+      "op": "AckDelivery",
+      "resp": {
+        "acked": true,
+        "delivery_id": 1
+      }
+    },
+    {
+      "op": "GetHealth",
+      "resp": {
+        "status": "ok",
+        "uptime_ms": 1000,
+        "version": "1.0.0"
+      }
+    },
+    {
+      "op": "GetReady",
+      "resp": {
+        "applied_version": 5,
+        "brokers": [
+          {
+            "circuit_state": "CLOSED",
+            "connected": true,
+            "name": "amqp_out",
+            "type": "mock"
+          },
+          {
+            "circuit_state": "CLOSED",
+            "connected": true,
+            "name": "mqtt_in",
+            "type": "mock"
+          }
+        ],
+        "ready": true,
+        "signing_mode": "permissive"
+      }
+    },
+    {
+      "op": "GetStats",
+      "resp": {
+        "active_brokers": 2,
+        "active_routes": 1,
+        "applied_version": 5,
+        "dlq_stats": {
+          "tracked_fingerprints": 0,
+          "tracked_sources": 0
+        },
+        "memory_budget_bytes": 67108864,
+        "memory_in_use_bytes": 0,
+        "memory_shed_total": 0
+      }
+    }
+  ]
+}

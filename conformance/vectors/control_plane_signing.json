@@ -1,0 +1,77 @@
+{
+  "cross_domain_event_as_state_rejected": true,
+  "event_body": "{\"action\": \"add_route\", \"data\": {\"source_broker\": \"mqtt_a\", \"source_topic\": \"sensors/+\", \"target_broker\": \"amqp_b\", \"target_kwargs\": {}, \"target_topic\": \"ingest\"}, \"schema_version\": 1, \"version\": 7}",
+  "keyring": "k2:second-secret-key,k1:first-secret-key",
+  "schema_version": 1,
+  "signed_event_envelope": {
+    "kid": "k2",
+    "payload": "{\"action\": \"add_route\", \"data\": {\"source_broker\": \"mqtt_a\", \"source_topic\": \"sensors/+\", \"target_broker\": \"amqp_b\", \"target_kwargs\": {}, \"target_topic\": \"ingest\"}, \"schema_version\": 1, \"version\": 7}",
+    "sig": "a2cacefa5b0e4557208bca6460e7e7213ecad0e02aeef338a3e966f4a0279d8d"
+  },
+  "signed_state_envelope": {
+    "kid": "k2",
+    "payload": "{\"action\": \"add_route\", \"data\": {\"source_broker\": \"mqtt_a\", \"source_topic\": \"sensors/+\", \"target_broker\": \"amqp_b\", \"target_kwargs\": {}, \"target_topic\": \"ingest\"}, \"schema_version\": 1, \"version\": 7}",
+    "sig": "649007c7001c9458ce0f96f238aac7c154f65a6bdc01bf38e97a22378a716f03"
+  },
+  "signed_version_envelope": {
+    "kid": "k2",
+    "sig": "507838ae1bd76db913695e489adf6e3557d1ce4ea817a073e0b0883b9716e7d1"
+  },
+  "suite": "control_plane_signing",
+  "validation_cases": [
+    {
+      "action": "add_broker",
+      "actual_valid": false,
+      "data": {
+        "kwargs": {
+          "host": "127.0.0.1"
+        },
+        "name": "mqtt_1",
+        "type": "mqtt"
+      },
+      "name": "valid_add_broker",
+      "valid": true
+    },
+    {
+      "action": "add_broker",
+      "actual_valid": false,
+      "data": {
+        "kwargs": {
+          "on_message_callback": "evil"
+        },
+        "name": "mqtt_1",
+        "type": "mqtt"
+      },
+      "name": "forbidden_broker_kwarg_on_message_callback",
+      "valid": false
+    },
+    {
+      "action": "update_broker_security",
+      "actual_valid": true,
+      "data": {
+        "name": "mqtt_1",
+        "security_config": {
+          "tls": true,
+          "tls_insecure": true
+        }
+      },
+      "name": "forbidden_tls_verify_disable",
+      "valid": false
+    },
+    {
+      "action": "add_route",
+      "actual_valid": true,
+      "data": {
+        "source_broker": "mqtt_1",
+        "source_topic": "sensors/+",
+        "target_broker": "amqp_1",
+        "target_kwargs": {
+          "semantic_translation": true
+        },
+        "target_topic": "ingest"
+      },
+      "name": "valid_add_route",
+      "valid": true
+    }
+  ]
+}

@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Milestone v2.1 complete + P0/P1 coverage audit remediated (106/106 unit tests passing; 90.0% combined branch+statement coverage gate enforced).
+**Current focus:** Native Rewrite Phase 1 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 1: IDL, OpenAPI 3.1, C ABI header, frozen contracts in `docs/contracts/`, and 71-vector deterministic `conformance/` suite; 541/541 unit tests passing at 93% coverage).
 
 ## Current Position
 
-Phase: 8 of 8 (Egress Backpressure, Circuit Breakers & Credential Hot-Reload) — Complete
-Plan: 2 of 2 in Phase 8 completed (08-01, 08-02)
-Status: Phase 8 verified (`08-VERIFICATION.md`); Milestone v2.1 complete (`v2.1-MILESTONE-AUDIT.md`); Coverage gate (`>= 90%`) enforced in `.coveragerc` and documented in `docs/TEST_COVERAGE.md`; Session checkpoint saved to `.planning/CHECKPOINT.md`
-Last activity: 2026-10-18 — Closed P0/P1 coverage gaps and wired 90% coverage gate (106/106 unit tests passing)
+Phase: Native Rewrite Phase 1 (Freeze the contracts and the client interface) — Complete
+Plan: 3 of 3 quick slices in Phase 1 completed (`261031-p1a`, `261031-p1b`, `261031-p1c`)
+Status: Phase 0 (`ADR-0001` Rust + C ABI) and Phase 1 complete; 541 Python unit tests passing (93% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-10-31b.md`
+Last activity: 2026-10-31 — Completed Native Rewrite Phase 1 (`api/postoffice/v1/postoffice.proto`, `api/openapi.json`, `include/postoffice.h`, `docs/contracts/`, `conformance/`)
 
 Progress: [██████████] 100%
 
