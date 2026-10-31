@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://postoffice.meso.io/schemas/v1/firewall-schema.json",
+  "title": "PostOffice Ingress Firewall Configuration (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "default_action": {
+      "type": "string",
+      "enum": ["allow", "drop", "reject"]
+    },
+    "max_in_flight": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "overload_action": {
+      "type": "string",
+      "enum": ["drop", "reject"]
+    },
+    "rules": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/FirewallRule"
+      }
+    }
+  },
+  "required": ["rules"],
+  "$defs": {
+    "FirewallRule": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["max_size", "topic_shape", "rate_limit", "content", "quarantine"]
+        },
+        "broker": {
+          "type": ["string", "null"]
+        },
+        "action": {
+          "type": "string",
+          "enum": ["allow", "drop", "reject"]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "max_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "allow": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "type": "string" }
+        },
+        "deny": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "type": "string" }
+        },
+        "allow_empty_segments": {
+          "type": "boolean"
+        },
+        "allow_wildcards": {
+          "type": "boolean"
+        },
+        "allow_control_chars": {
+          "type": "boolean"
+        },
+        "rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "burst": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "key": {
+          "type": "string",
+          "enum": ["broker", "topic", "identity"]
+        },
+        "identity_template": {
+          "type": "string"
+        },
+        "max_keys": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_array": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "require_object": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldSpec"
+          }
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "window": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "cooldown": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "FieldSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "type": {
+          "type": "string",
+          "enum": ["int", "float", "number", "str", "bool", "list", "dict"]
+        },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "min_len": { "type": "integer", "minimum": 0 },
+        "max_len": { "type": "integer", "minimum": 0 },
+        "choices": { "type": "array" }
+      }
+    }
+  }
+}

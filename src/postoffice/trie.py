@@ -58,10 +58,12 @@ class TopicTrie:
         """
         segments = topic.split('/')
         results: List[Any] = []
+        is_dollar_topic = topic.startswith('$')
 
         def _dfs(node: TrieNode, idx: int) -> None:
             # 1. Any multi-level wildcard '#' registered at this level matches all remaining segments
-            if node.wildcard_multi:
+            #    (MQTT §4.7.2: root '#' at idx == 0 does not match topics starting with '$')
+            if node.wildcard_multi and not (idx == 0 and is_dollar_topic):
                 results.extend(node.wildcard_multi)
 
             # 2. Reached the end of message topic segments; collect exact terminal routes
@@ -78,7 +80,8 @@ class TopicTrie:
                 _dfs(child, idx + 1)
 
             # 4. Single-level wildcard '+' branch
-            if node.wildcard_single is not None:
+            #    (MQTT §4.7.2: root '+' at idx == 0 does not match topics starting with '$')
+            if node.wildcard_single is not None and not (idx == 0 and is_dollar_topic):
                 _dfs(node.wildcard_single, idx + 1)
 
         _dfs(self.root, 0)

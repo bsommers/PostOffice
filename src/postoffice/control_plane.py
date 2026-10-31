@@ -13,13 +13,16 @@ class ControlPlane:
     any number of DataPlane workers can sync rules without restarting.
     """
     signer: Optional[HmacSigner] = None   # class default: planes built without __init__ stay unsigned
+    include_schema_version: bool = False
+    EVENT_SCHEMA_VERSION = 1
     version_key = "postoffice:version"
     version_sigs_key = "postoffice:version_sigs"
     VERSION_SIG_RETENTION = 1000
 
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
                  redis_password: Optional[str] = None, redis_tls: bool = False,
-                 signer: Optional[HmacSigner] = None):
+                 signer: Optional[HmacSigner] = None,
+                 include_schema_version: bool = False):
         self.r = redis.Redis(
             host=redis_host, port=redis_port, password=redis_password, ssl=redis_tls,
             decode_responses=True,
@@ -27,11 +30,15 @@ class ControlPlane:
         self.channel = "postoffice:config_updates"
         # Explicit signer wins; otherwise POSTOFFICE_EVENT_KEYS (None = unsigned legacy wire format).
         self.signer = signer if signer is not None else HmacSigner.from_env()
+        self.include_schema_version = include_schema_version
 
     def _publish_update(self, action: str, data: dict):
         # State is already written; bump the version, then announce it so workers can detect gaps.
         version = self.r.incr(self.version_key)
-        body = json.dumps({"action": action, "data": data, "version": version})
+        event_obj = {"action": action, "data": data, "version": version}
+        if self.include_schema_version:
+            event_obj["schema_version"] = self.EVENT_SCHEMA_VERSION
+        body = json.dumps(event_obj)
         if self.signer is not None:
             payload = sign_event(self.signer, body)
             self.r.hset(self.version_sigs_key, str(version), sign_version(self.signer, version))

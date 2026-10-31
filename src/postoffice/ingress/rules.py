@@ -40,8 +40,11 @@ def parse_action(value) -> Action:
 
 
 def topic_matches(pattern: str, topic: str) -> bool:
-    """MQTT-style match: '+' is one level, '#' is the remaining levels (including none)."""
+    """MQTT-style match: '+' is one level, '#' is the remaining levels (including none).
+    Per MQTT §4.7.2, patterns starting with '+' or '#' do not match '$'-prefixed topics."""
     p, t = pattern.split("/"), topic.split("/")
+    if topic.startswith("$") and p and p[0] in ("+", "#"):
+        return False
     for i, seg in enumerate(p):
         if seg == "#":
             return True

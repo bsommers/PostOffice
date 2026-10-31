@@ -484,6 +484,10 @@ class DataPlane:
         if not isinstance(payload, dict):
             self._control_event("invalid", "event is not an object")
             return None
+        schema_version = payload.get("schema_version", 1)
+        if type(schema_version) is not int or schema_version != 1:
+            self._control_event("invalid", f"unsupported schema_version: {schema_version}")
+            return None
         return payload
 
     def _process_update_message(self, message):

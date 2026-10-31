@@ -15,7 +15,8 @@ def format_dlq_payload(
     source_broker: str,
     source_topic: str,
     error: str,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    timestamp: Optional[str] = None,
 ) -> bytes:
     """
     Wraps an original messaging payload and forensic failure details into a JSON envelope.
@@ -31,7 +32,7 @@ def format_dlq_payload(
     envelope = {
         "source_broker": source_broker,
         "source_topic": source_topic,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": timestamp if timestamp is not None else datetime.now(timezone.utc).isoformat(),
         "error": str(error),
         "payload": payload_str,
         "is_base64": is_base64,
