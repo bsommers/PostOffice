@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
@@ -128,6 +129,14 @@ class Router:
         self.set_retry_policy()
         # Per-broker egress circuit breakers
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        # Optional nanosecond bridge-added latency probe (ingress entry -> egress handoff)
+        self.latency_probe: Optional[Callable[[int], None]] = None
+        if os.environ.get("POSTOFFICE_LATENCY_PROBE") == "1":
+            self.latency_probe = lambda _ns: None
+
+    def set_latency_probe(self, probe_fn: Optional[Callable[[int], None]]) -> None:
+        """Installs or clears a nanosecond latency callback invoked on every Router.route() call."""
+        self.latency_probe = probe_fn
 
     def configure_circuit_breaker(
         self,
@@ -457,44 +466,50 @@ class Router:
         nack_fn: Optional[Callable[..., None]] = None,
         **source_kwargs
     ):
-        limiter = self._inflight.get(source_client)
-        if limiter is None:
-            return self._route(source_client, source_topic, message, ack_fn, nack_fn, **source_kwargs)
-
-        if ack_fn is None and "ack_fn" in source_kwargs:
-            ack_fn = source_kwargs.pop("ack_fn")
-        if nack_fn is None and "nack_fn" in source_kwargs:
-            nack_fn = source_kwargs.pop("nack_fn")
-
-        lease = limiter.acquire()
-        if lease is None:
-            self._shed_over_cap(source_client, nack_fn)
-            return
-
-        def _releasing(fn):
-            if fn is None:
-                return None
-
-            def wrapped(*args, **kwargs):
-                try:
-                    return fn(*args, **kwargs)
-                finally:
-                    lease.release()
-            return wrapped
-
-        # With confirmation callbacks the slot is held until the message is acked or nacked;
-        # without them (e.g. MQTT) it only covers the time spent inside route().
-        has_callbacks = ack_fn is not None or nack_fn is not None
+        probe_fn = self.latency_probe
+        t0_ns = time.perf_counter_ns() if probe_fn is not None else 0
         try:
-            return self._route(
-                source_client, source_topic, message, _releasing(ack_fn), _releasing(nack_fn), **source_kwargs
-            )
-        except BaseException:
-            lease.release()
-            raise
-        finally:
-            if not has_callbacks:
+            limiter = self._inflight.get(source_client)
+            if limiter is None:
+                return self._route(source_client, source_topic, message, ack_fn, nack_fn, **source_kwargs)
+
+            if ack_fn is None and "ack_fn" in source_kwargs:
+                ack_fn = source_kwargs.pop("ack_fn")
+            if nack_fn is None and "nack_fn" in source_kwargs:
+                nack_fn = source_kwargs.pop("nack_fn")
+
+            lease = limiter.acquire()
+            if lease is None:
+                self._shed_over_cap(source_client, nack_fn)
+                return
+
+            def _releasing(fn):
+                if fn is None:
+                    return None
+
+                def wrapped(*args, **kwargs):
+                    try:
+                        return fn(*args, **kwargs)
+                    finally:
+                        lease.release()
+                return wrapped
+
+            # With confirmation callbacks the slot is held until the message is acked or nacked;
+            # without them (e.g. MQTT) it only covers the time spent inside route().
+            has_callbacks = ack_fn is not None or nack_fn is not None
+            try:
+                return self._route(
+                    source_client, source_topic, message, _releasing(ack_fn), _releasing(nack_fn), **source_kwargs
+                )
+            except BaseException:
                 lease.release()
+                raise
+            finally:
+                if not has_callbacks:
+                    lease.release()
+        finally:
+            if probe_fn is not None:
+                probe_fn(time.perf_counter_ns() - t0_ns)
 
     def _shed_over_cap(self, source_client: str, nack_fn: Optional[Callable[..., None]]) -> None:
         self.metrics.record_error(source_client, "inflight_limit")
