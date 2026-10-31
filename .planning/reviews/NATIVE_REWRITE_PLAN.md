@@ -1,6 +1,6 @@
 # Native (Rust / Go) Re-platforming Plan
 
-> Status: **plan v3** (decisions recorded 2026-10-25; §7 open questions closed 2026-10-30; Phase 0 started). No code changed. Nothing here has been measured yet: the review and tests ran against mocked brokers, so *Phase 0 exists to find out where Python actually tops out and to choose the language by measurement.*
+> Status: **plan v3 — Phase 0 complete** (decisions recorded 2026-10-25; §7 closed 2026-10-30; Phase 0 benchmarks & Rust-vs-Go bake-off recorded 2026-10-31 in [`docs/BENCHMARKS.md`](../../docs/BENCHMARKS.md) and [`docs/adr/0001-native-data-plane-language.md`](../../docs/adr/0001-native-data-plane-language.md)).
 > Companion: [`PERFORMANCE_TEST_PLAN.md`](PERFORMANCE_TEST_PLAN.md) (the test and benchmark suite that gates every phase).
 
 ## 0. Decisions recorded (user, 2026-10-25)

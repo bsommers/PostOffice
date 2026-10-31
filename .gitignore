@@ -227,3 +227,5 @@ graphify-out/
 
 # perf run outputs (baselines go to docs/BENCHMARKS.md)
 perf/results/
+perf/bakeoff/go/postoffice-bakeoff-go
+

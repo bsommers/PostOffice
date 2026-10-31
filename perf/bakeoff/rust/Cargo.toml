@@ -1,0 +1,9 @@
+[package]
+name = "postoffice-bakeoff-rust"
+version = "0.1.0"
+edition = "2021"
+description = "Phase 0 Rust bake-off slice: MQTT -> Firewall -> ContentGuard -> TopicTrie -> Egress + MemoryGovernor"
+
+[[bin]]
+name = "postoffice-bakeoff-rust"
+path = "src/main.rs"

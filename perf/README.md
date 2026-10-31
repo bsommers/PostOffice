@@ -10,13 +10,17 @@ Off the data path. Plans: [`PERFORMANCE_TEST_PLAN.md`](../.planning/reviews/PERF
 | `micro.py` | T1 micro-benchmarks of the Python components (trie, token bucket, DLQ budget, firewall chains). |
 | `probe.py` | Nanosecond bridge-added latency collector for `Router.set_latency_probe`. |
 | `baseline.py` | P-B Python worker hot-path benchmark matrix (routes, payloads, firewall, conversions, fan-out, GIL contention, 10x overload). |
+| `bakeoff.py` | P0-4 Rust vs. Go bake-off orchestrator (`perf/bakeoff/rust` and `perf/bakeoff/go`). |
 | `loadgen/` | Rust open-loop load generator and accounting sink (`postoffice-loadgen`): byte-identical `POB1` header, logarithmic HdrHistogram with coordinated-omission correction, MQTT v3.1.1 publisher/sink, and in-memory loopback verifier. |
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m perf.micro [--quick] [--out perf/results]
 PYTHONPATH=src .venv/bin/python -m perf.baseline [--quick] [--out perf/results]
-PYTHONPATH=src .venv/bin/python -m unittest tests/test_perf_oracle.py tests/test_perf_loadgen.py tests/test_perf_probe.py
+PYTHONPATH=src .venv/bin/python -m perf.bakeoff [--messages 100000] [--out perf/results]
+PYTHONPATH=src .venv/bin/python -m unittest tests/test_perf_oracle.py tests/test_perf_loadgen.py tests/test_perf_probe.py tests/test_perf_bakeoff.py
 cargo test --manifest-path perf/loadgen/Cargo.toml -q
+cargo test --manifest-path perf/bakeoff/rust/Cargo.toml -q
+(cd perf/bakeoff/go && go test ./...)
 ```
 
-`perf/results/` is git-ignored. Reviewed baselines are published in [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md).
+`perf/results/` is git-ignored. Reviewed baselines are published in [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md) and [`docs/adr/0001-native-data-plane-language.md`](../docs/adr/0001-native-data-plane-language.md).

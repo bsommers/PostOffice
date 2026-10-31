@@ -1,7 +1,7 @@
 # PostOffice Phase 0 Performance Benchmarks & Decision-Gate Baseline
 
-> **Status:** Phase 0 (Slices P0-1, P0-2, P0-3) recorded 2026-10-31.
-> **Plans:** [`NATIVE_REWRITE_PLAN.md`](../.planning/reviews/NATIVE_REWRITE_PLAN.md) (§0.1 SLOs, §4 Phase 0) and [`PERFORMANCE_TEST_PLAN.md`](../.planning/reviews/PERFORMANCE_TEST_PLAN.md) (T1 & T2 / P-A & P-B).
+> **Status:** Phase 0 Complete (Slices P0-1, P0-2, P0-3, P0-4) recorded 2026-10-31.
+> **Plans & ADR:** [`NATIVE_REWRITE_PLAN.md`](../.planning/reviews/NATIVE_REWRITE_PLAN.md) (§0.1 SLOs, §4 Phase 0), [`PERFORMANCE_TEST_PLAN.md`](../.planning/reviews/PERFORMANCE_TEST_PLAN.md) (T1 & T2 / P-A & P-B), and [`docs/adr/0001-native-data-plane-language.md`](adr/0001-native-data-plane-language.md).
 
 ## 1. Environment & Methodology
 
@@ -12,6 +12,7 @@
   ```bash
   PYTHONPATH=src .venv/bin/python -m perf.micro --out perf/results
   PYTHONPATH=src .venv/bin/python -m perf.baseline --out perf/results
+  PYTHONPATH=src .venv/bin/python -m perf.bakeoff --messages 100000 --out perf/results
   cargo test --manifest-path perf/loadgen/Cargo.toml -q
   ```
 
@@ -76,4 +77,29 @@ Median of 5 runs $\times$ 4,000 messages per cell through `Router.route()` with 
 3. **Double JSON Parse in `ContentGuard` + `SchemaConverter`:** When both `ContentGuard(format="json")` and `SchemaConverter(input_format="json")` are active on a route, the payload is parsed twice (`ContentGuard._parse_json` and `SchemaConverter.deserialize`).
 4. **GIL Serialization Under Multi-Broker Callback Threads:** Moving from 1 thread to 4 or 8 concurrent ingress callback threads on the full pipeline yields **zero throughput gain** (`33.4k` $\to$ `31.1k` $\to$ `30.5k msg/s`) while **p99.9 latency spikes 25x–50x** (`209 µs` $\to$ `5.2 ms – 11.0 ms`) due to CPython GIL contention and lock convoys across `KeyedLimiter` and Prometheus counters.
 5. **Edge Profile Gap:** CPython idle/loaded RSS sits around **32.6 MB** before loading `confluent-kafka`/`librdkafka` and `pika` worker threads, leaving minimal headroom under the `< 64 MB` idle edge target and requiring a Python runtime + native wheels on ARMv7/ARM64.
-6. **Implication for Slice P0-4 (Rust vs. Go Bake-off):** Multi-core scaling inside a single worker and deterministic sub-millisecond tail latency (`p99.9`) under concurrent broker callbacks require a GIL-free hot path. Slice P0-4 will benchmark the identical pipeline slice (`MQTT -> Firewall -> Egress + Memory Governor`) in Rust and Go.
+6. **Implication for Slice P0-4 (Rust vs. Go Bake-off):** Multi-core scaling inside a single worker and deterministic sub-millisecond tail latency (`p99.9`) under concurrent broker callbacks require a GIL-free hot path.
+
+---
+
+## 5. Slice P0-4: Rust vs. Go vs. Python Bake-Off (`perf.bakeoff`)
+
+Identical pipeline slice (`1 KB POB1 CRC32 verification -> MemoryGovernor 80% check -> 5-rule Firewall + JSON ContentGuard -> TopicTrie wildcard match -> Egress confirm + HdrHistogram`) run across 100,000 messages per cell in Rust (`perf/bakeoff/rust`), Go (`perf/bakeoff/go`), and Python (`perf/baseline.py`).
+
+| Metric / Workload Cell | Python 3.13 (`Router`) | Go 1.26 (`perf/bakeoff/go`) | Rust 1.89 (`perf/bakeoff/rust`) | Rust vs. Python | Rust vs. Go |
+|---|---:|---:|---:|---:|---:|
+| **1 Thread — Passthrough** (`msg/s`) | 104,510 | 159,712 | **284,366** | 2.7x | 1.8x |
+| **1 Thread — Full Firewall + ContentGuard** (`msg/s`) | 39,667 | 140,063 | **222,976** | 5.6x | 1.6x |
+| **4 Threads — Full Pipeline** (`msg/s`) | 31,103 *(GIL cap)* | 535,176 | **852,442** | **27.4x** | 1.6x |
+| **8 Threads — Full Pipeline** (`msg/s`) | 30,483 *(GIL cap)* | 995,274 | **1,586,661** | **52.0x** | 1.6x |
+| **8 Threads — Bridge `p50` Latency** | 28.4 µs | 7.43 µs | **4.82 µs** | 5.9x lower | 1.5x lower |
+| **8 Threads — Bridge `p99` Latency** | 103.2 µs | 10.90 µs | **6.46 µs** | 16.0x lower | 1.7x lower |
+| **8 Threads — Bridge `p99.9` Latency** | **5,221.8 µs** | 30.21 µs | **9.66 µs** | **540x lower** | **3.1x lower** |
+| **Peak RSS under 10x Overload** | 32.58 MB | 9.93 MB | **4.46 MB** | 7.3x smaller | 2.2x smaller |
+| **Stripped Binary Size** | N/A (venv + wheels) | 1,764.2 KB | **527.9 KB** | — | 3.3x smaller |
+| **10x Overload Memory Governor** (`budget=10KB, shed@8KB`) | `delivered=8, shed=3992` | `delivered=8, shed=99992` | `delivered=8, shed=99992` | Pass | Pass |
+
+### Phase 0 Exit Decision (`docs/adr/0001-native-data-plane-language.md`)
+- **Rust** is selected for the core library (`libpostoffice` C ABI: Firewall, ContentGuard, TopicTrie, Schema Codecs, MemoryGovernor) and the native Data Plane worker.
+- **Go** is selected for off-hot-path cloud/Kubernetes operator and optional REST gateway tooling.
+- **Python** remains the Control Plane admin CLI, conformance-vector generator, benchmark orchestrator, and Python SDK.
+
