@@ -1,6 +1,6 @@
 # Native (Rust / Go) Re-platforming Plan
 
-> Status: **plan v2** (decisions recorded 2026-10-25). No code changed. Nothing here has been measured yet: the review and tests ran against mocked brokers, so *Phase 0 exists to find out where Python actually tops out and to choose the language by measurement.*
+> Status: **plan v3** (decisions recorded 2026-10-25; §7 open questions closed 2026-10-30; Phase 0 started). No code changed. Nothing here has been measured yet: the review and tests ran against mocked brokers, so *Phase 0 exists to find out where Python actually tops out and to choose the language by measurement.*
 > Companion: [`PERFORMANCE_TEST_PLAN.md`](PERFORMANCE_TEST_PLAN.md) (the test and benchmark suite that gates every phase).
 
 ## 0. Decisions recorded (user, 2026-10-25)
@@ -16,7 +16,7 @@
 
 ### 0.1 SLOs, made testable
 
-The numbers are the user's; the definitions are my proposal and must be confirmed because they change results by an order of magnitude.
+The numbers are the user's; the definitions below were confirmed by the user on 2026-10-30 (§7).
 
 | SLO | Definition used by the test suite |
 |---|---|
@@ -24,7 +24,7 @@ The numbers are the user's; the definitions are my proposal and must be confirme
 | Per-worker throughput | >= 10,000 msg/s sustained per worker (implies >= 10 workers; horizontal scaling must be near-linear) |
 | Latency p99 < 5 ms | **PostOffice-added latency**: ingress callback entry -> egress client-library handoff, measured in-process. A second metric, end-to-end through real brokers with confirms, is reported but not gated, because Kafka `acks=all` and broker fsync dominate it |
 | Memory | Soft budget = `memory_fraction` x host RAM (default 0.5), applied as a cgroup-aware limit. The process accounts bytes in queues, DLQ buffers and caches (D8) and sheds at 80% of budget; it must never be OOM-killed under 10x overload |
-| Edge profile | Proposed (needs your numbers): RSS < 64 MB idle, < 128 MB loaded, ARMv7/ARM64, static binary, no external runtime. The edge target scales the throughput SLO down, e.g. 1,000 msg/s on 1 core |
+| Edge profile | Confirmed 2026-10-30: RSS < 64 MB idle, < 128 MB loaded, ARMv7/ARM64, static binary, no external runtime. The edge target scales the throughput SLO down, e.g. 1,000 msg/s on 1 core |
 
 Honest read: 10k msg/s per worker with p99 < 5 ms is at or beyond what the current threaded Python design is likely to hold once conversion and firewall checks are in the path (GIL, per-message allocation, GC pauses). That is a prediction to test in Phase 0, not a result.
 
@@ -138,10 +138,11 @@ Pick by Phase 0 evidence. Default candidate: **ingress firewall + codecs as a li
 
 Continue D3–D9 and T1–T4 in Python now: they are the executable specification and fix real defects regardless of language. Start Phase 0 in parallel (benchmark rig is independent). Phase 1 contracts should absorb D3–D9 outputs; Phase 2 must not start before D3/D5 settle the firewall rule schema.
 
-## 7. Decisions still open
+## 7. Decisions (closed by user, 2026-10-30)
 
-1. **Latency definition (§0.1):** is "p99 < 5 ms" the bridge-added latency (my assumption), or end-to-end including broker confirms? The second is not achievable with Kafka `acks=all` on most storage.
-2. **Edge numbers:** target hardware (CPU/arch, RAM) and throughput for the edge profile, so the 64 MB / 1,000 msg/s proposal can be replaced with real figures.
-3. **Reference payload and fan-out** for the 100k msg/s figure (1 KB, 1 route is my assumption; real mixes are covered by the scenario tier).
-4. **Client languages to commit to in v1:** I propose Python, Go, Java, C#, C/C++ (via C ABI) and Rust. Others (JS/TS, Swift) follow from gRPC generation on demand.
-5. **Durability at the edge:** is disk-backed store-and-forward acceptable on edge devices (flash wear), or RAM-only with loss on power failure?
+1. **Latency definition (§0.1):** p99 < 5 ms is **bridge-added** latency (ingress callback -> egress client handoff, in-process). End-to-end is reported, not gated.
+2. **Edge numbers:** the proposal stands: ARMv7/ARM64, RSS < 64 MB idle / < 128 MB loaded, 1,000 msg/s on 1 core, static binary.
+3. **Reference workload** for 100k msg/s: 1 KB payload, 1 route, at-least-once.
+4. **v1 client languages:** Python, Go, Java, C#, C/C++ (via C ABI), Rust, **JS/TS**. Swift and others on demand via gRPC generation.
+5. **Edge durability:** disk-backed store-and-forward, **opt-in**, with a size cap and wear-aware batching; RAM-only remains the default.
+6. **Next step:** start Phase 0 (benchmark rig, P-A/P-B), then the Rust-vs-Go bake-off.
