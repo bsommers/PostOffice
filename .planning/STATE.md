@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Native Rewrite Phase 1 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 1: IDL, OpenAPI 3.1, C ABI header, frozen contracts in `docs/contracts/`, and 71-vector deterministic `conformance/` suite; 541/541 unit tests passing at 93% coverage).
+**Current focus:** Native Rewrite Phase 2 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 2: Rust `libpostoffice` C ABI library in `native/libpostoffice/`, `MemoryGovernor` in `src/postoffice/governor.py`, Python FFI bridge & `POSTOFFICE_NATIVE=1` feature flag in `src/postoffice/native.py`, edge build profile, and deterministic fuzz suite; 561/561 unit tests passing at 93% coverage; 71/71 conformance vectors passing in both Python and Native modes).
 
 ## Current Position
 
-Phase: Native Rewrite Phase 1 (Freeze the contracts and the client interface) — Complete
-Plan: 3 of 3 quick slices in Phase 1 completed (`261031-p1a`, `261031-p1b`, `261031-p1c`)
-Status: Phase 0 (`ADR-0001` Rust + C ABI) and Phase 1 complete; 541 Python unit tests passing (93% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-10-31b.md`
-Last activity: 2026-10-31 — Completed Native Rewrite Phase 1 (`api/postoffice/v1/postoffice.proto`, `api/openapi.json`, `include/postoffice.h`, `docs/contracts/`, `conformance/`)
+Phase: Native Rewrite Phase 2 (First native component: `libpostoffice` core, C ABI, `MemoryGovernor`, `POSTOFFICE_NATIVE=1` bridge) — Complete
+Plan: 3 of 3 quick slices in Phase 2 completed (`261102-p2a`, `261102-p2b`, `261102-p2c`)
+Status: Phases 0, 1, and 2 complete; 561 Python unit tests + 7 Rust unit/fuzz tests passing (93% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-02a.md`
+Last activity: 2026-11-02 — Completed Native Rewrite Phase 2 (`native/libpostoffice/`, `src/postoffice/native.py`, `src/postoffice/governor.py`, `tests/test_phase2_*.py`)
 
 Progress: [██████████] 100%
 

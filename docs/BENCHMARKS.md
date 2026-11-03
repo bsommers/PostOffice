@@ -107,3 +107,23 @@ Identical pipeline slice (`1 KB POB1 CRC32 verification -> MemoryGovernor 80% ch
 - **Go** is selected for off-hot-path cloud/Kubernetes operator and optional REST gateway tooling.
 - **Python** remains the Control Plane admin CLI, conformance-vector generator, benchmark orchestrator, and Python SDK.
 
+---
+
+## 6. Phase 2 Verification: `libpostoffice` C ABI vs. Python T1 Micro-Benchmarks (`perf.micro --compare-native`)
+
+Measured across `native/libpostoffice` (`libpostoffice.so` / `libpostoffice.a`) vs. CPython 3.13:
+
+| Component | Case | Python (ns/op) | Rust `libpostoffice` (ns/op) | Rust Throughput (ops/s) | Speedup |
+|---|---|---:|---:|---:|---:|
+| `TopicTrie.match` | `filters=10` | 847 | **89.3** | 11,199,964 | **9.5x** |
+| `TopicTrie.match` | `filters=1,000` | 858 | **87.6** | 11,419,045 | **9.8x** |
+| `TopicTrie.match` | `filters=100,000` | 849 | **86.6** | 11,551,212 | **9.8x** |
+| `TokenBucket.try_consume` | `threads=1` | 208 | **2.7** | 364,896,917 | **77.0x** |
+| `MemoryGovernor` | `try_acquire + release` | 220 | **4.3** | 230,255,584 | **51.2x** |
+| `Firewall.evaluate` | `rules=1` (`max_payload_bytes`) | 201 | **12.2** | 82,219,938 | **16.5x** |
+| `Firewall.evaluate` | `rules=5` (size + shape + 3 rate limits) | 3,544 | **320.1** | 3,123,829 | **11.1x** |
+| `Firewall.evaluate` | `rules=20` | 13,957 | **1,237.2** | 808,286 | **11.3x** |
+| `Firewall.evaluate` | `rules=5 + ContentGuard` (JSON scan + parse) | 19,230 | **2,270.1** | 440,509 | **8.5x** |
+| `Firewall.evaluate` | `rules=5 + SenderLedger` | 3,600 | **319.0** | 3,134,374 | **11.3x** |
+
+

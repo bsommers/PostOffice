@@ -14,7 +14,7 @@ import json
 import statistics
 import threading
 import time
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List
 
 from perf import results
 from postoffice.dlq import BudgetedDlq
@@ -44,7 +44,8 @@ def _time(fn: Callable[[], None], n: int, repeats: int) -> Dict[str, float]:
 def bench_trie(n: int, repeats: int) -> Dict[str, dict]:
     out = {}
     queries = ["sensors/facility/site_3/temp", "devices/gateway/5", "telemetry/line_7/a/voltage"]
-    for size in (10, 1_000, 100_000):
+    sizes = (10, 1_000) if n <= 2_000 else (10, 1_000, 100_000)
+    for size in sizes:
         trie = TopicTrie()
         # Distinct filters, so each query matches a handful: this times lookup, not result-list size.
         for i in range(size):
@@ -118,18 +119,60 @@ BENCHES = {"topic_trie.match": bench_trie, "token_bucket.try_consume": bench_tok
            "budgeted_dlq": bench_dlq, "firewall.evaluate": bench_firewall}
 
 
-def main(argv=None) -> Dict[str, Dict[str, dict]]:
+def run_native_micro(quick: bool) -> Dict[str, Dict[str, dict]]:
+    import os
+    import pathlib
+    import subprocess
+
+    crate_dir = pathlib.Path(__file__).resolve().parent.parent / "native" / "libpostoffice"
+    cmd = [
+        "cargo",
+        "run",
+        "--release",
+        "--quiet",
+        "--example",
+        "micro_bench",
+        "--manifest-path",
+        str(crate_dir / "Cargo.toml"),
+    ]
+    if quick:
+        cmd.append("--")
+        cmd.append("--quick")
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return json.loads(proc.stdout.strip())
+
+
+def main(argv=None) -> Dict[str, Any]:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--quick", action="store_true", help="fewer iterations (smoke run)")
     ap.add_argument("--out", default=None, help="directory for the results JSON")
+    ap.add_argument(
+        "--compare-native",
+        action="store_true",
+        help="run both Python and Rust libpostoffice micro-benchmarks side-by-side",
+    )
     args = ap.parse_args(argv)
-    n, repeats = (2_000, 3) if args.quick else (50_000, 7)
+    n, repeats = (500, 3) if args.quick else (50_000, 7)
     metrics = {}
     print(f"{'benchmark':<28} {'case':<24} {'ns/op':>10} {'ops/s':>12}  (median of {repeats} x {n:,})")
     for name, fn in BENCHES.items():
         metrics[name] = fn(n, repeats)
         for case, m in metrics[name].items():
             print(f"{name:<28} {case:<24} {m['ns_per_op']:>10,.0f} {m['ops_per_s']:>12,}")
+    if args.compare_native:
+        native_metrics = run_native_micro(args.quick)
+        print(f"\n{'native_c_abi benchmark':<28} {'case':<24} {'ns/op':>10} {'ops/s':>12}")
+        for name, cases in native_metrics.items():
+            for case, m in cases.items():
+                print(f"{name:<28} {case:<24} {m['ns_per_op']:>10,.1f} {m['ops_per_s']:>12,}")
+        combined = {"python": metrics, "native_c_abi": native_metrics}
+        if args.out:
+            doc = results.make_result(
+                "t1-micro-compare",
+                {"iterations": n, "repeats": repeats, "benchmarks": combined},
+            )
+            print("wrote", results.write_result(doc, args.out))
+        return combined
     if args.out:
         doc = results.make_result("t1-micro-python", {"iterations": n, "repeats": repeats, "benchmarks": metrics})
         print("wrote", results.write_result(doc, args.out))

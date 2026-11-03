@@ -1,6 +1,6 @@
 # Native (Rust / Go) Re-platforming Plan
 
-> Status: **plan v3 — Phase 0 complete** (decisions recorded 2026-10-25; §7 closed 2026-10-30; Phase 0 benchmarks & Rust-vs-Go bake-off recorded 2026-10-31 in [`docs/BENCHMARKS.md`](../../docs/BENCHMARKS.md) and [`docs/adr/0001-native-data-plane-language.md`](../../docs/adr/0001-native-data-plane-language.md)).
+> Status: **plan v3 — Phases 0, 1, and 2 complete** (decisions recorded 2026-10-25; §7 closed 2026-10-30; Phase 0 benchmarks & Rust-vs-Go bake-off recorded 2026-10-31 in [`docs/BENCHMARKS.md`](../../docs/BENCHMARKS.md) and [`docs/adr/0001-native-data-plane-language.md`](../../docs/adr/0001-native-data-plane-language.md); Phase 1 contracts & 71-vector conformance suite completed 2026-10-31; Phase 2 Rust `libpostoffice` core, C ABI, `MemoryGovernor`, `POSTOFFICE_NATIVE=1` FFI bridge, and fuzz suite completed 2026-11-02).
 > Companion: [`PERFORMANCE_TEST_PLAN.md`](PERFORMANCE_TEST_PLAN.md) (the test and benchmark suite that gates every phase).
 
 ## 0. Decisions recorded (user, 2026-10-25)
