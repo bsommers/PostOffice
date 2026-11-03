@@ -41,6 +41,7 @@ class AmqpClient(BaseClient):
         self._stop_event = threading.Event()
         self._connected_event = threading.Event()
         self._prefetch: Optional[int] = None
+        self._declared_queues: set[str] = set()
 
     def connect(self):
         self.thread = threading.Thread(target=self._consume_loop)
@@ -51,6 +52,7 @@ class AmqpClient(BaseClient):
 
     def disconnect(self):
         self._stop_event.set()
+        self._declared_queues.clear()
         if self.connection and self.connection.is_open:
             try:
                 self.connection.add_callback_threadsafe(self.connection.close)
@@ -178,9 +180,10 @@ class AmqpClient(BaseClient):
 
         def _publish():
             try:
-                if not exchange:
+                if not exchange and topic not in self._declared_queues:
                     # If no exchange is specified, default to the default exchange which requires the queue to exist
                     self.channel.queue_declare(queue=topic)
+                    self._declared_queues.add(topic)
 
                 self.channel.basic_publish(
                     exchange=exchange,
@@ -227,6 +230,8 @@ class AmqpClient(BaseClient):
             )
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
+            self._declared_queues.clear()
+            self.channel.confirm_delivery()
             if self._prefetch is not None:
                 self._apply_prefetch()
             logger.info(f"{self.name} connected to AMQP broker at {self.host}:{self.port}")

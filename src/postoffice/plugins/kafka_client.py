@@ -1,8 +1,9 @@
 from confluent_kafka import Consumer, Producer, KafkaError
 from postoffice.base_client import BaseClient
+from postoffice.native import NativeKafkaTracker
 from postoffice.registry import ClientRegistry
 from postoffice.security import SecurityConfig, ensure_security_config
-from typing import Optional, Callable, Union, Dict, Any
+from typing import Optional, Callable, Union, Dict, Any, Tuple
 import logging
 import threading
 
@@ -30,6 +31,9 @@ class KafkaClient(BaseClient):
         self._pending_subscriptions = []
         self._paused = threading.Event()
         self._pause_applied = False
+        self._offset_tracker = NativeKafkaTracker()
+        self._inflight_msgs: Dict[Tuple[str, int], Dict[int, Any]] = {}
+        self._offset_lock = threading.Lock()
 
     def _build_kafka_config(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         conf: Dict[str, Any] = {'bootstrap.servers': self.bootstrap_servers}
@@ -71,7 +75,9 @@ class KafkaClient(BaseClient):
             prod_conf = self._build_kafka_config()
             cons_conf = self._build_kafka_config({
                 'group.id': f"{self.name}_group",
-                'auto.offset.reset': 'earliest'
+                'auto.offset.reset': 'earliest',
+                'enable.auto.commit': False,
+                'enable.auto.offset.store': False,
             })
             self.producer = Producer(prod_conf)
             self.consumer = Consumer(cons_conf)
@@ -195,6 +201,12 @@ class KafkaClient(BaseClient):
                     self._pending_subscriptions = []
 
             self._apply_pause_state()
+            if self.producer is not None:
+                try:
+                    self.producer.poll(0)
+                except Exception as e:
+                    logger.error(f"{self.name}: Error polling producer in consume loop: {e}")
+
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue
@@ -203,11 +215,29 @@ class KafkaClient(BaseClient):
                     logger.error(f"Kafka error: {msg.error()}")
                 continue
 
-            def _ack():
-                try:
-                    self.consumer.commit(message=msg, asynchronous=True)
-                except Exception as e:
-                    logger.error(f"Error committing offset: {e}")
+            tp_key = (str(msg.topic()), int(msg.partition()))
+            msg_offset = int(msg.offset())
+            with self._offset_lock:
+                self._offset_tracker.poll_offset(tp_key[0], tp_key[1], msg_offset)
+                self._inflight_msgs.setdefault(tp_key, {})[msg_offset] = msg
+
+            def _ack(_msg=msg, _tp=tp_key, _off=msg_offset):
+                commit_target = None
+                with self._offset_lock:
+                    part_map = self._inflight_msgs.get(_tp)
+                    if part_map is not None and _off in part_map:
+                        high = self._offset_tracker.ack_offset(_tp[0], _tp[1], _off)
+                        if high is not None:
+                            commit_target = part_map.get(high, _msg)
+                            for k in [k for k in part_map if k <= high]:
+                                part_map.pop(k, None)
+                    else:
+                        commit_target = _msg
+                if commit_target is not None:
+                    try:
+                        self.consumer.commit(message=commit_target, asynchronous=True)
+                    except Exception as e:
+                        logger.error(f"Error committing offset: {e}")
 
             self.on_message(
                 msg.topic(),

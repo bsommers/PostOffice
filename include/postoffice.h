@@ -82,6 +82,7 @@ typedef struct po_codec_t po_codec_t;
 typedef struct po_client_t po_client_t;
 typedef struct po_signer_t po_signer_t;
 typedef struct po_dlq_budget_t po_dlq_budget_t;
+typedef struct po_kafka_tracker_t po_kafka_tracker_t;
 
 /** Return the compiled `PO_ABI_VERSION` of the loaded shared library. */
 uint32_t po_abi_version(void);
@@ -385,6 +386,37 @@ po_status_t po_engine_sync_redis(
     uint16_t port,
     double now_sec,
     po_owned_buf_t *out_report_json
+);
+
+po_status_t po_kafka_tracker_new(po_kafka_tracker_t **out_tracker);
+void po_kafka_tracker_free(po_kafka_tracker_t *tracker);
+
+po_status_t po_kafka_tracker_poll(
+    po_kafka_tracker_t *tracker,
+    po_slice_t topic,
+    int32_t partition,
+    int64_t offset
+);
+
+po_status_t po_kafka_tracker_ack(
+    po_kafka_tracker_t *tracker,
+    po_slice_t topic,
+    int32_t partition,
+    int64_t offset,
+    bool *out_advanced,
+    int64_t *out_highest_contiguous
+);
+
+int64_t po_kafka_tracker_watermark(
+    const po_kafka_tracker_t *tracker,
+    po_slice_t topic,
+    int32_t partition
+);
+
+po_status_t po_kafka_tracker_reset(
+    po_kafka_tracker_t *tracker,
+    po_slice_t topic,
+    int32_t partition
 );
 
 #ifdef __cplusplus

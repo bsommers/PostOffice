@@ -4,6 +4,7 @@
 //! `po_client_t`) and `po_owned_buf_t` / `po_buf_free` with panic containment (`catch_unwind`)
 //! across every `extern "C"` entry point.
 
+pub mod adapters;
 pub mod codec;
 pub mod engine;
 pub mod firewall;
@@ -17,6 +18,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::slice;
 
+use adapters::KafkaOffsetTracker;
 use codec::{
     decode_confluent, dlq_fingerprint, encode_confluent, CodecRegistry,
 };
@@ -85,6 +87,7 @@ pub struct PoCodecHandle(pub CodecRegistry);
 pub struct PoSignerHandle(pub HmacSigner);
 pub struct PoDlqBudgetHandle(pub BudgetedDlq);
 pub struct PoEngineHandle(pub Engine);
+pub struct PoKafkaTrackerHandle(pub KafkaOffsetTracker);
 
 pub struct PoClientHandle {
     pub endpoint_url: String,
@@ -1328,6 +1331,108 @@ pub unsafe extern "C" fn po_engine_sync_redis(
         }
     }))
     .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_new(
+    out_tracker: *mut *mut PoKafkaTrackerHandle,
+) -> PoStatus {
+    if out_tracker.is_null() {
+        return PoStatus::ErrInvalidArgument;
+    }
+    *out_tracker = Box::into_raw(Box::new(PoKafkaTrackerHandle(KafkaOffsetTracker::new())));
+    PoStatus::Ok
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_free(tracker: *mut PoKafkaTrackerHandle) {
+    if !tracker.is_null() {
+        let _ = Box::from_raw(tracker);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_poll(
+    tracker: *mut PoKafkaTrackerHandle,
+    topic: PoSlice,
+    partition: i32,
+    offset: i64,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if tracker.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let top = match slice_to_str(topic) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        (*tracker).0.poll_offset(top, partition, offset);
+        PoStatus::Ok
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_ack(
+    tracker: *mut PoKafkaTrackerHandle,
+    topic: PoSlice,
+    partition: i32,
+    offset: i64,
+    out_advanced: *mut bool,
+    out_highest_contiguous: *mut i64,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if tracker.is_null() || out_advanced.is_null() || out_highest_contiguous.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let top = match slice_to_str(topic) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        match (*tracker).0.ack_offset(top, partition, offset) {
+            Some(high) => {
+                *out_advanced = true;
+                *out_highest_contiguous = high;
+            }
+            None => {
+                *out_advanced = false;
+                *out_highest_contiguous = -1;
+            }
+        }
+        PoStatus::Ok
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_watermark(
+    tracker: *const PoKafkaTrackerHandle,
+    topic: PoSlice,
+    partition: i32,
+) -> i64 {
+    if tracker.is_null() {
+        return -1;
+    }
+    let Ok(top) = slice_to_str(topic) else {
+        return -1;
+    };
+    (*tracker).0.committed_watermark(top, partition)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_kafka_tracker_reset(
+    tracker: *mut PoKafkaTrackerHandle,
+    topic: PoSlice,
+    partition: i32,
+) -> PoStatus {
+    if tracker.is_null() {
+        return PoStatus::ErrInvalidArgument;
+    }
+    let Ok(top) = slice_to_str(topic) else {
+        return PoStatus::ErrInvalidArgument;
+    };
+    (*tracker).0.reset_partition(top, partition);
+    PoStatus::Ok
 }
 
 #[cfg(test)]

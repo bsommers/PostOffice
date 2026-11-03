@@ -414,6 +414,44 @@ def _bind_signatures(lib: ctypes.CDLL) -> None:
     ]
     lib.po_engine_sync_redis.restype = ctypes.c_int
 
+    lib.po_kafka_tracker_new.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+    lib.po_kafka_tracker_new.restype = ctypes.c_int
+
+    lib.po_kafka_tracker_free.argtypes = [ctypes.c_void_p]
+    lib.po_kafka_tracker_free.restype = None
+
+    lib.po_kafka_tracker_poll.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_int32,
+        ctypes.c_int64,
+    ]
+    lib.po_kafka_tracker_poll.restype = ctypes.c_int
+
+    lib.po_kafka_tracker_ack.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_int32,
+        ctypes.c_int64,
+        ctypes.POINTER(ctypes.c_bool),
+        ctypes.POINTER(ctypes.c_int64),
+    ]
+    lib.po_kafka_tracker_ack.restype = ctypes.c_int
+
+    lib.po_kafka_tracker_watermark.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_int32,
+    ]
+    lib.po_kafka_tracker_watermark.restype = ctypes.c_int64
+
+    lib.po_kafka_tracker_reset.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_int32,
+    ]
+    lib.po_kafka_tracker_reset.restype = ctypes.c_int
+
 
 def _consume_owned_buf(lib: ctypes.CDLL, buf: PoOwnedBuf) -> bytes:
     try:
@@ -992,4 +1030,60 @@ class NativeEngine:
         if rc != PO_OK:
             raise RuntimeError(f"po_engine_sync_redis failed ({rc})")
         return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
+
+class NativeKafkaTracker:
+    """FFI wrapper over `po_kafka_tracker_t` (contiguous offset watermark tracker)."""
+
+    def __init__(self) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        rc = self._lib.po_kafka_tracker_new(ctypes.byref(self._handle))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_kafka_tracker_new failed ({rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_kafka_tracker_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def poll_offset(self, topic: str, partition: int, offset: int) -> None:
+        t_s, _b = _to_slice(topic.encode("utf-8"))
+        rc = self._lib.po_kafka_tracker_poll(
+            self._handle, t_s, int(partition), int(offset)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_kafka_tracker_poll failed ({rc})")
+
+    def ack_offset(
+        self, topic: str, partition: int, offset: int
+    ) -> Optional[int]:
+        t_s, _b = _to_slice(topic.encode("utf-8"))
+        adv = ctypes.c_bool(False)
+        high = ctypes.c_int64(-1)
+        rc = self._lib.po_kafka_tracker_ack(
+            self._handle,
+            t_s,
+            int(partition),
+            int(offset),
+            ctypes.byref(adv),
+            ctypes.byref(high),
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_kafka_tracker_ack failed ({rc})")
+        return int(high.value) if adv.value else None
+
+    def committed_watermark(self, topic: str, partition: int) -> int:
+        t_s, _b = _to_slice(topic.encode("utf-8"))
+        return int(
+            self._lib.po_kafka_tracker_watermark(
+                self._handle, t_s, int(partition)
+            )
+        )
+
+    def reset_partition(self, topic: str, partition: int) -> None:
+        t_s, _b = _to_slice(topic.encode("utf-8"))
+        self._lib.po_kafka_tracker_reset(self._handle, t_s, int(partition))
+
 

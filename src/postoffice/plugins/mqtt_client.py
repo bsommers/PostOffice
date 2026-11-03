@@ -33,6 +33,7 @@ class MqttClient(BaseClient):
             self.port = port
 
         self.subscribed_topics = []
+        self._inflight_publishes: Dict[int, tuple] = {}
         self._init_paho_client()
 
     def _init_paho_client(self):
@@ -55,6 +56,7 @@ class MqttClient(BaseClient):
 
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
+        self.client.on_publish = self._on_publish
 
     def reload_security(self, security_config: Optional[Union[SecurityConfig, Dict[str, Any]]]) -> None:
         was_connected = bool(self.client and self.client.is_connected())
@@ -73,6 +75,9 @@ class MqttClient(BaseClient):
             self.connect()
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
+        if getattr(reason_code, "is_failure", False) is True:
+            logger.error(f"{self.name} failed to connect to MQTT broker: {reason_code}")
+            return
         logger.info(f"{self.name} connected to MQTT broker with result code {reason_code}")
         recorded = self.get_subscriptions()
         for topic in self.subscribed_topics:
@@ -83,6 +88,16 @@ class MqttClient(BaseClient):
                 self.client.subscribe(topic)
             logger.info(f"{self.name} subscribed to {topic}")
         self.flush_publish_buffer()
+
+    def _on_publish(self, client, userdata, mid, reason_code=None, properties=None):
+        entry = self._inflight_publishes.pop(mid, None)
+        if entry is not None:
+            on_confirm, on_error = entry
+            if getattr(reason_code, "is_failure", False) is True:
+                if on_error:
+                    on_error(RuntimeError(f"MQTT PUBACK failure for mid={mid}: {reason_code}"))
+            elif on_confirm:
+                on_confirm()
 
     def _on_message(self, client, userdata, msg):
         self.on_message(msg.topic, msg.payload, qos=msg.qos)
@@ -134,8 +149,19 @@ class MqttClient(BaseClient):
 
         try:
             info = self.client.publish(topic, message, qos=qos, retain=retain)
-            if on_confirm:
-                on_confirm()
+            rc = getattr(info, "rc", 0)
+            if isinstance(rc, int) and rc != 0:
+                err = RuntimeError(f"MQTT publish failed with rc={rc}")
+                logger.error(f"Error publishing MQTT message: {err}")
+                if on_error:
+                    on_error(err)
+                return
+            mid = getattr(info, "mid", None)
+            if qos >= 1 and isinstance(mid, int):
+                self._inflight_publishes[mid] = (on_confirm, on_error)
+            else:
+                if on_confirm:
+                    on_confirm()
         except Exception as e:
             logger.error(f"Error publishing MQTT message: {e}")
             if on_error:
