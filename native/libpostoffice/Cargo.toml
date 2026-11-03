@@ -1,0 +1,22 @@
+[package]
+name = "postoffice"
+version = "1.0.0"
+edition = "2021"
+description = "PostOffice Native Core Library (libpostoffice) — TopicTrie, Firewall, ContentGuard, SenderLedger, MemoryGovernor, and Wire Codecs"
+
+[lib]
+name = "postoffice"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["server"]
+server = ["avro", "protobuf"]
+edge = []
+avro = []
+protobuf = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind"

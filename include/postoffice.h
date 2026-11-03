@@ -143,6 +143,16 @@ po_status_t po_firewall_check(
     po_firewall_verdict_t *out_verdict
 );
 
+po_status_t po_firewall_evaluate(
+    po_firewall_t *firewall,
+    po_slice_t broker,
+    po_slice_t sender_id,
+    po_slice_t topic,
+    po_slice_t payload,
+    double now_monotonic_sec,
+    po_owned_buf_t *out_verdict_json
+);
+
 po_status_t po_firewall_sender_report(
     const po_firewall_t *firewall,
     uint32_t limit,
@@ -173,10 +183,40 @@ po_status_t po_governor_release(
 
 uint64_t po_governor_in_use_bytes(const po_governor_t *governor);
 uint64_t po_governor_shed_total(const po_governor_t *governor);
+uint64_t po_governor_detect_host_ram_bytes(void);
 
 /* =========================================================================
  * Wire Codec & DLQ Fingerprinting (`po_codec_t`)
  * ========================================================================= */
+
+po_status_t po_codec_new(po_codec_t **out_codec);
+void po_codec_free(po_codec_t *codec);
+
+po_status_t po_codec_register_schema(
+    po_codec_t *codec,
+    uint32_t schema_id,
+    po_slice_t name,
+    po_slice_t schema_type,
+    po_slice_t definition_json
+);
+
+po_status_t po_codec_serialize(
+    const po_codec_t *codec,
+    po_slice_t record_json,
+    po_slice_t format_type,
+    po_slice_t schema_name,
+    bool wire_format,
+    po_owned_buf_t *out_bytes
+);
+
+po_status_t po_codec_deserialize(
+    const po_codec_t *codec,
+    po_slice_t payload,
+    po_slice_t format_type,
+    po_slice_t schema_name,
+    bool wire_format,
+    po_owned_buf_t *out_record_json
+);
 
 /** Encode Confluent 5-byte wire header (`0x00` + big-endian uint32 schema_id + payload). */
 po_status_t po_codec_encode_confluent(
