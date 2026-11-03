@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Native Rewrite Phase 2 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 2: Rust `libpostoffice` C ABI library in `native/libpostoffice/`, `MemoryGovernor` in `src/postoffice/governor.py`, Python FFI bridge & `POSTOFFICE_NATIVE=1` feature flag in `src/postoffice/native.py`, edge build profile, and deterministic fuzz suite; 561/561 unit tests passing at 93% coverage; 71/71 conformance vectors passing in both Python and Native modes).
+**Current focus:** Native Rewrite Phase 3 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 3: Native Data Plane worker `postoffice-worker` binary & `Engine` in `native/libpostoffice/src/engine.rs`, RESP2 T7 subscribe-before-snapshot Redis sync in `native/libpostoffice/src/redis_sync.rs`, D9 HMAC-SHA256 signing & action validation in `native/libpostoffice/src/signing.rs`, Kafka K1/K2 contiguous offset watermark tracker & adapter state in `native/libpostoffice/src/adapters.rs`, and `ShadowHarness` differential soak in `src/postoffice/shadow.py`; 573/573 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
 
 ## Current Position
 
-Phase: Native Rewrite Phase 2 (First native component: `libpostoffice` core, C ABI, `MemoryGovernor`, `POSTOFFICE_NATIVE=1` bridge) — Complete
-Plan: 3 of 3 quick slices in Phase 2 completed (`261102-p2a`, `261102-p2b`, `261102-p2c`)
-Status: Phases 0, 1, and 2 complete; 561 Python unit tests + 7 Rust unit/fuzz tests passing (93% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-02a.md`
-Last activity: 2026-11-02 — Completed Native Rewrite Phase 2 (`native/libpostoffice/`, `src/postoffice/native.py`, `src/postoffice/governor.py`, `tests/test_phase2_*.py`)
+Phase: Native Rewrite Phase 3 (Native Data Plane worker, read path first, protocol adapters, and shadow mode soak) — Complete
+Plan: 3 of 3 quick slices in Phase 3 completed (`261102-p3a`, `261102-p3b`, `261102-p3c`)
+Status: Phases 0, 1, 2, and 3 complete; 573 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-02b.md`
+Last activity: 2026-11-02 — Completed Native Rewrite Phase 3 (`native/libpostoffice/src/engine.rs`, `redis_sync.rs`, `signing.rs`, `adapters.rs`, `src/postoffice/shadow.py`, `tests/test_phase3_*.py`)
 
 Progress: [██████████] 100%
 

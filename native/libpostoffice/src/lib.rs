@@ -1181,9 +1181,43 @@ pub unsafe extern "C" fn po_engine_apply_action(
         let mut guard = (*engine).0.state.lock().unwrap();
         match act {
             "set_dlq" => {
-                let b = d_val.get("broker").and_then(|v| v.as_str()).unwrap_or("");
+                let b = d_val
+                    .get("broker")
+                    .or_else(|| d_val.get("target_broker"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let t = d_val.get("topic").and_then(|v| v.as_str()).unwrap_or("");
                 guard.set_dlq(b, t);
+                let max_bytes = d_val
+                    .get("max_payload_bytes")
+                    .or_else(|| d_val.get("max_message_bytes"))
+                    .and_then(|v| v.as_i64())
+                    .map(|n| n.max(0) as usize)
+                    .unwrap_or(guard.dlq_budget.max_message_bytes);
+                let msgs_per_sec = d_val
+                    .get("rate_per_sec")
+                    .or_else(|| d_val.get("msgs_per_sec"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(100.0);
+                let bytes_per_sec = d_val
+                    .get("bytes_per_sec")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1024.0 * 1024.0);
+                let dedupe_win = d_val
+                    .get("dedupe_window_sec")
+                    .or_else(|| d_val.get("dedupe_window"))
+                    .and_then(|v| v.as_f64())
+                    .filter(|w| *w > 0.0);
+                if let Ok(bgt) = BudgetedDlq::new(
+                    max_bytes,
+                    msgs_per_sec,
+                    bytes_per_sec,
+                    1024,
+                    dedupe_win,
+                    4096,
+                ) {
+                    guard.dlq_budget = bgt;
+                }
                 PoStatus::Ok
             }
             "set_unroutable_policy" => {

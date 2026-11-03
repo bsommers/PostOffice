@@ -13,7 +13,7 @@ import pathlib
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 from postoffice.ingress.rules import Action, MessageContext, Verdict
 
@@ -919,12 +919,21 @@ class NativeEngine:
             self._lib.po_engine_free(handle)
             self._handle = ctypes.c_void_p()
 
-    def apply_action(self, action: str, data: Dict[str, Any]) -> None:
-        a_s, _b1 = _to_slice(action.encode("utf-8"))
-        d_s, _b2 = _to_slice(json.dumps(data).encode("utf-8"))
+    def apply_action(
+        self, action: Union[str, Dict[str, Any]], data: Optional[Dict[str, Any]] = None
+    ) -> None:
+        if isinstance(action, dict):
+            payload = dict(action)
+            act_name = str(payload.pop("action", ""))
+            d_obj = payload.get("data", payload) if "data" in payload and len(payload) == 1 else payload
+        else:
+            act_name = str(action)
+            d_obj = data or {}
+        a_s, _b1 = _to_slice(act_name.encode("utf-8"))
+        d_s, _b2 = _to_slice(json.dumps(d_obj).encode("utf-8"))
         rc = self._lib.po_engine_apply_action(self._handle, a_s, d_s)
         if rc != PO_OK:
-            raise ValueError(f"po_engine_apply_action({action}) failed ({rc})")
+            raise ValueError(f"po_engine_apply_action({act_name}) failed ({rc})")
 
     def register_broker(
         self, name: str, protocol: str, kwargs: Optional[Dict[str, Any]] = None

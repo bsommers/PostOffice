@@ -836,6 +836,7 @@ impl EngineState {
                 "wire_format",
                 "wire_format_in",
                 "wire_format_out",
+                "confluent_framing",
             ];
             let mut publish_kwargs: Vec<(String, JsonValue)> = Vec::new();
             for (k, v) in entries {
@@ -852,6 +853,7 @@ impl EngineState {
             let output_schema = route_cfg.get("output_schema").and_then(|v| v.as_str());
             let wire_format = route_cfg
                 .get("wire_format")
+                .or_else(|| route_cfg.get("confluent_framing"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let wire_in = route_cfg
@@ -1188,6 +1190,7 @@ impl EngineState {
                     .unwrap_or("");
                 let tkw = data
                     .get("target_kwargs")
+                    .or_else(|| data.get("kwargs"))
                     .and_then(|v| v.as_object())
                     .map(|s| s.to_vec())
                     .unwrap_or_default();
@@ -1223,6 +1226,26 @@ impl EngineState {
                 self.routes_count = 0;
                 self.subscriptions.clear();
                 self.firewall = None;
+            }
+            "register_schema" => {
+                let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let s_type_str = data
+                    .get("schema_type")
+                    .or_else(|| data.get("type"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("AVRO");
+                let def = data
+                    .get("schema_str")
+                    .or_else(|| data.get("definition"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let sid = data
+                    .get("schema_id")
+                    .or_else(|| data.get("id"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or_else(|| (self.codec.len() as u32) + 1);
+                let _ = self.codec.register_schema(sid, name, s_type_str, def);
             }
             _ => {}
         }

@@ -212,6 +212,10 @@ impl CodecRegistry {
         Self::default()
     }
 
+    pub fn len(&self) -> usize {
+        self.by_id.len()
+    }
+
     pub fn register_schema(
         &mut self,
         schema_id: u32,
