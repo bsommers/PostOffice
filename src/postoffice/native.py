@@ -976,6 +976,18 @@ class NativeEngine:
     def set_ingress(self, config: Dict[str, Any]) -> None:
         self.apply_action("set_ingress", config)
 
+    def configure_signing(self, keyring: str, mode: str = "enforce") -> None:
+        self.apply_action("configure_signing", {"keyring": keyring, "mode": mode})
+
+    def set_allow_clear_state(self, allow: bool = True) -> None:
+        self.apply_action("set_allow_clear_state", {"allow": bool(allow)})
+
+    def apply_event(self, raw_event: str, now_sec: float = 0.0) -> str:
+        self.apply_action(
+            "apply_event", {"raw_event": raw_event, "now_sec": float(now_sec)}
+        )
+        return "applied"
+
     def route(
         self,
         source_broker: str,

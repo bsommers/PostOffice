@@ -454,9 +454,25 @@ pub fn validate_action_json(action: &str, data: &JsonValue) -> Result<(), String
             let Some(tkw) = data.get("target_kwargs").and_then(|v| v.as_object()) else {
                 return Err("target_kwargs must be an object".to_string());
             };
-            for (k, _) in tkw {
+            for (k, v) in tkw {
                 if !is_valid_key(k) {
                     return Err("target_kwargs has an invalid key".to_string());
+                }
+                if k == "engine" {
+                    let Some(eng) = v.as_str() else {
+                        return Err("route engine must be one of all, python, native, canary".to_string());
+                    };
+                    if !matches!(eng, "all" | "python" | "native" | "canary") {
+                        return Err("route engine must be one of all, python, native, canary".to_string());
+                    }
+                }
+            }
+            if let Some(eng_val) = data.get("engine") {
+                let Some(eng) = eng_val.as_str() else {
+                    return Err("route engine must be one of all, python, native, canary".to_string());
+                };
+                if !matches!(eng, "all" | "python" | "native" | "canary") {
+                    return Err("route engine must be one of all, python, native, canary".to_string());
                 }
             }
             Ok(())
@@ -575,6 +591,50 @@ pub fn validate_action_json(action: &str, data: &JsonValue) -> Result<(), String
                             }
                         }
                     }
+                }
+            }
+            Ok(())
+        }
+        "set_rollout" => {
+            if !has_key("native_percentage") {
+                return Err("set_rollout is missing: native_percentage".to_string());
+            }
+            for (k, _) in entries {
+                if !matches!(
+                    k.as_str(),
+                    "native_percentage" | "environment" | "status" | "reason"
+                ) {
+                    return Err("set_rollout has an unknown key".to_string());
+                }
+            }
+            let Some(pct) = data.get("native_percentage").and_then(|v| v.as_i64()) else {
+                return Err("native_percentage must be an integer in 0..100".to_string());
+            };
+            if !(0..=100).contains(&pct) {
+                return Err("native_percentage must be an integer in 0..100".to_string());
+            }
+            if let Some(env_val) = data.get("environment") {
+                let Some(env) = env_val.as_str() else {
+                    return Err("rollout environment is not a valid name".to_string());
+                };
+                if !is_valid_name(env) {
+                    return Err("rollout environment is not a valid name".to_string());
+                }
+            }
+            if let Some(st_val) = data.get("status") {
+                let Some(st) = st_val.as_str() else {
+                    return Err("rollout status is invalid".to_string());
+                };
+                if !matches!(st, "active" | "paused" | "rolled_back" | "completed") {
+                    return Err("rollout status is invalid".to_string());
+                }
+            }
+            if let Some(r_val) = data.get("reason") {
+                let Some(r) = r_val.as_str() else {
+                    return Err("rollout reason must be a string".to_string());
+                };
+                if r.len() > 256 {
+                    return Err("rollout reason must be at most 256 characters".to_string());
                 }
             }
             Ok(())

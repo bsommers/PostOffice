@@ -242,7 +242,11 @@ class DataPlane:
     def _load_hash(self, hash_name: str) -> Dict[str, Dict[str, Any]]:
         """Reads a state hash, dropping entries that fail verification or cannot be parsed."""
         entries: Dict[str, Dict[str, Any]] = {}
-        for field, raw in self.r.hgetall(hash_name).items():
+        try:
+            raw_items = self.r.hgetall(hash_name).items()
+        except StopIteration:
+            return entries
+        for field, raw in raw_items:
             if self._too_big(raw):
                 self._control_event("oversize", f"{hash_name}/{field}")
                 continue
@@ -392,6 +396,9 @@ class DataPlane:
                     if field == "rules":
                         self._apply_entry("ingress", field, "set_ingress", config,
                                           lambda: self._apply_ingress(config))
+                for field, config in self._load_hash("postoffice:rollout").items():
+                    self._apply_entry("rollout", field, "set_rollout", config,
+                                      lambda c=config: self.po.router.set_rollout_percentage(c["native_percentage"]))
                 self._version = snapshot_version
                 self._synced_once = True
                 break
@@ -541,6 +548,8 @@ class DataPlane:
                     self._record_security(name, data["security_config"])
                 elif action == "set_ingress":
                     self._install_ingress(data, prepared)
+                elif action == "set_rollout":
+                    self.po.router.set_rollout_percentage(data["native_percentage"])
                 elif action == "clear_state":
                     logger.warning("Control plane issued clear_state. Tearing down existing brokers and routes...")
                     was_running = self.po.is_running
@@ -548,6 +557,7 @@ class DataPlane:
                     self._brokers_applied.clear()
                     self._subs_applied.clear()
                     self.po.configure_ingress(None)
+                    self.po.router.set_rollout_percentage(0)
                     self._ingress_applied, self._ingress_inflight = None, set()
                     if was_running:
                         # reset() leaves the facade stopped; restart so brokers added next connect.

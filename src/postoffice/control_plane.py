@@ -122,8 +122,21 @@ class ControlPlane:
         self._put("postoffice:ingress", "rules", config)
         self._publish_update("set_ingress", config)
 
+    def set_rollout(self, native_percentage: int, environment: str = "default",
+                    status: str = "active", reason: str = "") -> Dict[str, Any]:
+        """Updates the mixed-fleet canary rollout percentage for an environment and alerts all workers."""
+        config = {
+            "native_percentage": int(native_percentage),
+            "environment": environment,
+            "status": status,
+            "reason": reason,
+        }
+        self._put("postoffice:rollout", environment, config)
+        self._publish_update("set_rollout", config)
+        return config
+
     def clear_state(self):
         """Wipes the distributed state (dangerous)."""
         self.r.delete("postoffice:brokers", "postoffice:routes", "postoffice:subscriptions",
-                      "postoffice:ingress")
+                      "postoffice:ingress", "postoffice:rollout")
         self._publish_update("clear_state", {})

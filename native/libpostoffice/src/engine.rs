@@ -440,6 +440,23 @@ pub struct EngineState {
     pub max_event_bytes: usize,
     pub event_bucket: TokenBucket,
     pub needs_resync: bool,
+    pub worker_engine: String,
+    pub native_percentage: u8,
+}
+
+pub fn canary_bucket(source_broker: &str, source_topic: &str, payload: &[u8]) -> u8 {
+    let mut msg = Vec::with_capacity(9 + source_broker.len() + source_topic.len() + payload.len());
+    msg.extend_from_slice(b"canary\x00");
+    msg.extend_from_slice(source_broker.as_bytes());
+    msg.push(0);
+    msg.extend_from_slice(source_topic.as_bytes());
+    msg.push(0);
+    msg.extend_from_slice(payload);
+    let digest = crate::signing::sha256(&msg);
+    let val = u64::from_be_bytes([
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+    ]);
+    (val % 100) as u8
 }
 
 impl EngineState {
@@ -467,7 +484,38 @@ impl EngineState {
             max_event_bytes: 256 * 1024,
             event_bucket: TokenBucket::new(20.0, 100.0, 0.0).unwrap(),
             needs_resync: false,
+            worker_engine: "native".to_string(),
+            native_percentage: 100,
         }
+    }
+
+    pub fn route_matches_engine(
+        &self,
+        route_cfg: &JsonValue,
+        source_broker: &str,
+        source_topic: &str,
+        payload: &[u8],
+    ) -> bool {
+        let route_engine = route_cfg
+            .get("engine")
+            .and_then(|v| v.as_str())
+            .unwrap_or("all");
+        if route_engine == "all" || self.worker_engine == "all" {
+            return true;
+        }
+        if route_engine == "python" || route_engine == "native" {
+            return route_engine == self.worker_engine;
+        }
+        if route_engine == "canary" {
+            let bucket = canary_bucket(source_broker, source_topic, payload);
+            if self.worker_engine == "native" {
+                return bucket < self.native_percentage;
+            }
+            if self.worker_engine == "python" {
+                return bucket >= self.native_percentage;
+            }
+        }
+        true
     }
 
     pub fn register_broker(
@@ -794,14 +842,32 @@ impl EngineState {
             }
         }
 
-        // 3. Fan-out across matched routes
+        // 3. Fan-out across matched routes (filtered by worker_engine / canary split)
+        let mut active_route_cfgs: Vec<JsonValue> = Vec::new();
+        for route_str in &matched_json_strs {
+            if let Ok(route_cfg) = parse_json(route_str) {
+                if self.route_matches_engine(&route_cfg, source_broker, source_topic, payload) {
+                    active_route_cfgs.push(route_cfg);
+                }
+            }
+        }
+        if active_route_cfgs.is_empty() {
+            return Self::build_outcome(
+                true,
+                false,
+                false,
+                "allow",
+                "",
+                "",
+                published,
+                dlq_published,
+            );
+        }
+
         let mut any_failed = false;
         let mut handled_by_dlq = false;
 
-        for route_str in matched_json_strs {
-            let Ok(route_cfg) = parse_json(&route_str) else {
-                continue;
-            };
+        for route_cfg in active_route_cfgs {
             let Some(entries) = route_cfg.as_object() else {
                 continue;
             };
@@ -837,6 +903,7 @@ impl EngineState {
                 "wire_format_in",
                 "wire_format_out",
                 "confluent_framing",
+                "engine",
             ];
             let mut publish_kwargs: Vec<(String, JsonValue)> = Vec::new();
             for (k, v) in entries {
@@ -1188,12 +1255,17 @@ impl EngineState {
                     .get("target_topic")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let tkw = data
+                let mut tkw = data
                     .get("target_kwargs")
                     .or_else(|| data.get("kwargs"))
                     .and_then(|v| v.as_object())
                     .map(|s| s.to_vec())
                     .unwrap_or_default();
+                if let Some(eng) = data.get("engine") {
+                    if !tkw.iter().any(|(k, _)| k == "engine") {
+                        tkw.push(("engine".to_string(), eng.clone()));
+                    }
+                }
                 let _ = self.add_route(sb, st, tb, tt, tkw);
             }
             "add_subscription" => {
@@ -1226,6 +1298,35 @@ impl EngineState {
                 self.routes_count = 0;
                 self.subscriptions.clear();
                 self.firewall = None;
+                self.native_percentage = 0;
+            }
+            "set_rollout" => {
+                if let Some(pct) = data.get("native_percentage").and_then(|v| v.as_i64()) {
+                    self.native_percentage = pct.clamp(0, 100) as u8;
+                }
+            }
+            "set_worker_engine" => {
+                if let Some(eng) = data.get("engine").and_then(|v| v.as_str()) {
+                    self.worker_engine = eng.to_string();
+                }
+            }
+            "configure_signing" => {
+                if let Some(kr) = data.get("keyring").and_then(|v| v.as_str()) {
+                    self.signer = HmacSigner::from_keyring_str(kr).ok();
+                }
+                if let Some(mode) = data.get("mode").and_then(|v| v.as_str()) {
+                    self.signing_mode = mode.to_string();
+                }
+            }
+            "set_allow_clear_state" => {
+                if let Some(allow) = data.get("allow").and_then(|v| v.as_bool()) {
+                    self.allow_clear_state = allow;
+                }
+            }
+            "apply_event" => {
+                let raw = data.get("raw_event").and_then(|v| v.as_str()).unwrap_or("");
+                let now = data.get("now_sec").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let _ = self.apply_control_event(raw, now);
             }
             "register_schema" => {
                 let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");

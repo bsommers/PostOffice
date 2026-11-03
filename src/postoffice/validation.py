@@ -13,7 +13,10 @@ import postoffice.plugins  # noqa: F401  (registers the built-in protocols)
 from postoffice.registry import ClientRegistry
 
 ACTIONS = ("add_broker", "add_route", "add_subscription", "update_broker_security", "clear_state",
-           "set_ingress")
+           "set_ingress", "set_rollout")
+VALID_ENGINES = ("all", "python", "native", "canary")
+ROLLOUT_STATUSES = ("active", "paused", "rolled_back", "completed")
+ROLLOUT_KEYS = {"native_percentage", "environment", "status", "reason"}
 
 NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,127}\Z")
 KEY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]{0,63}\Z")
@@ -131,6 +134,11 @@ def _validate_route(data: Dict[str, Any]) -> None:
     _check_topic(data["source_topic"], "source_topic")
     _check_topic(data["target_topic"], "target_topic")
     _check_options(data["target_kwargs"], "target_kwargs")
+    if "engine" in data:
+        _require(data["engine"] in VALID_ENGINES, "route engine must be one of all, python, native, canary")
+    if "engine" in data["target_kwargs"]:
+        _require(data["target_kwargs"]["engine"] in VALID_ENGINES,
+                 "route engine must be one of all, python, native, canary")
 
 
 def _validate_subscription(data: Dict[str, Any]) -> None:
@@ -182,8 +190,23 @@ def _validate_ingress(data: Dict[str, Any]) -> None:
     _validate_inflight(data.get("inflight", {}))
 
 
+def _validate_rollout(data: Dict[str, Any]) -> None:
+    _check_keys(data, {"native_percentage"}, "set_rollout")
+    _require(set(data) <= ROLLOUT_KEYS, "set_rollout has an unknown key")
+    pct = data.get("native_percentage")
+    _require(_is_int(pct) and 0 <= pct <= 100, "native_percentage must be an integer in 0..100")
+    if "environment" in data:
+        _check_name(data["environment"], "rollout environment")
+    if "status" in data:
+        _require(data["status"] in ROLLOUT_STATUSES, "rollout status is invalid")
+    if "reason" in data:
+        _require(isinstance(data["reason"], str) and len(data["reason"]) <= 256,
+                 "rollout reason must be a string of at most 256 characters")
+
+
 _VALIDATORS = {
     "set_ingress": _validate_ingress,
+    "set_rollout": _validate_rollout,
     "add_broker": _validate_broker,
     "add_route": _validate_route,
     "add_subscription": _validate_subscription,

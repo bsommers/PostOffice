@@ -225,6 +225,17 @@ pub fn converge_from_redis(
         }
     }
 
+    let rollout_raw = snap.hgetall("postoffice:rollout")?;
+    for (field, raw) in rollout_raw {
+        if let Ok(Some(val)) = state.open_signed_raw(&raw, "state", "postoffice:rollout", &field) {
+            if validate_action_json("set_rollout", &val).is_ok() {
+                state.apply_validated_action("set_rollout", &val);
+            } else {
+                state.metrics.record_control_event("invalid");
+            }
+        }
+    }
+
     state.applied_version = Some(snapshot_version);
 
     // 3. Drain any events published to the pubsub socket while the snapshot was read

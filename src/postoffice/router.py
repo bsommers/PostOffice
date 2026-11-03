@@ -90,8 +90,25 @@ def _translate_semantics(source_kwargs: Dict[str, Any], target_kwargs: Dict[str,
     return translated
 
 
+def canary_bucket(source_broker: str, source_topic: str, payload: bytes) -> int:
+    """
+    Deterministic 0..99 bucket for mixed-fleet canary traffic splitting.
+    Bit-for-bit identical between Python and Rust (`native/libpostoffice/src/engine.rs`).
+    """
+    digest = hashlib.sha256(
+        b"canary\x00"
+        + source_broker.encode("utf-8")
+        + b"\x00"
+        + source_topic.encode("utf-8")
+        + b"\x00"
+        + payload
+    ).digest()
+    return int.from_bytes(digest[:8], "big") % 100
+
+
 class Router:
     VALID_UNROUTABLE_POLICIES = ("nack", "dlq", "drop")
+    VALID_ENGINES = ("all", "python", "native", "canary")
 
     def __init__(
         self,
@@ -133,6 +150,37 @@ class Router:
         self.latency_probe: Optional[Callable[[int], None]] = None
         if os.environ.get("POSTOFFICE_LATENCY_PROBE") == "1":
             self.latency_probe = lambda _ns: None
+        # Mixed-fleet canary routing controls (Phase 4)
+        self.worker_engine: str = os.environ.get("POSTOFFICE_WORKER_ENGINE", "python")
+        self.native_percentage: int = int(os.environ.get("POSTOFFICE_NATIVE_PERCENTAGE", "0"))
+
+    def set_worker_engine(self, engine: str) -> None:
+        """Sets the worker engine identity ('python', 'native', or 'all') used for route filtering."""
+        if engine not in ("python", "native", "all"):
+            raise ValueError(f"Invalid worker_engine '{engine}'")
+        self.worker_engine = engine
+
+    def set_rollout_percentage(self, native_percentage: int) -> None:
+        """Sets the 0..100 percentage of 'canary' routes handled by 'native' workers."""
+        if not isinstance(native_percentage, int) or isinstance(native_percentage, bool) or not (0 <= native_percentage <= 100):
+            raise ValueError("native_percentage must be an int in 0..100")
+        self.native_percentage = native_percentage
+
+    def _route_matches_engine(
+        self, route_config: Dict[str, Any], source_client: str, source_topic: str, message: bytes
+    ) -> bool:
+        route_engine = route_config.get("engine", "all")
+        if route_engine == "all" or self.worker_engine == "all":
+            return True
+        if route_engine in ("python", "native"):
+            return route_engine == self.worker_engine
+        if route_engine == "canary":
+            bucket = canary_bucket(source_client, source_topic, message)
+            if self.worker_engine == "native":
+                return bucket < self.native_percentage
+            if self.worker_engine == "python":
+                return bucket >= self.native_percentage
+        return True
 
     def set_latency_probe(self, probe_fn: Optional[Callable[[int], None]]) -> None:
         """Installs or clears a nanosecond latency callback invoked on every Router.route() call."""
@@ -552,9 +600,9 @@ class Router:
 
         # Find all matching routes in O(k) time via TopicTrie
         client_trie = self.client_tries.get(source_client)
-        matching_routes = client_trie.match(source_topic) if client_trie else []
+        raw_matching_routes = client_trie.match(source_topic) if client_trie else []
 
-        if not matching_routes:
+        if not raw_matching_routes:
             logger.debug(f"No routes found for {source_client}/{source_topic}")
             self.metrics.record_error(source_client, "unroutable")
             if self.firewall is not None:
@@ -586,6 +634,17 @@ class Router:
             else:
                 # Source cannot be pushed back (e.g. MQTT): the message is shed, but counted.
                 self.metrics.record_error(source_client, "unroutable_dropped")
+            return
+
+        matching_routes = [
+            rc for rc in raw_matching_routes
+            if self._route_matches_engine(rc, source_client, source_topic, message)
+        ]
+        if not matching_routes:
+            # Route exists in cluster trie, but is assigned to peer engine (e.g. engine="native" or canary split)
+            if ack_fn:
+                ack_fn()
+            self.metrics.record_duration(source_client, time.perf_counter() - start_time)
             return
 
         def _handle_dlq_on_error(exc: Optional[Exception], failed_route: Optional[Dict[str, Any]]) -> bool:
@@ -620,7 +679,8 @@ class Router:
             excluded_keys = (
                 "target_client", "target_topic", "dlq_broker", "dlq_topic",
                 "input_format", "input_schema", "output_format", "output_schema",
-                "wire_format", "wire_format_in", "wire_format_out"
+                "wire_format", "wire_format_in", "wire_format_out", "confluent_framing",
+                "engine",
             )
             raw_kwargs = {
                 k: v for k, v in route_config.items()
