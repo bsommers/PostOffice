@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postoffice-worker-native
+  labels:
+    app.kubernetes.io/name: postoffice
+    app.kubernetes.io/component: worker-native
+    postoffice.io/engine: native
+spec:
+  replicas: {{ .Values.nativeWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postoffice
+      postoffice.io/engine: native
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postoffice
+        postoffice.io/engine: native
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.nativeWorker.metricsPort }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: worker-native
+          image: "{{ .Values.nativeWorker.image.repository }}:{{ .Values.nativeWorker.image.tag }}"
+          args:
+            - "--redis-host"
+            - "{{ .Values.redis.host }}"
+            - "--redis-port"
+            - "{{ .Values.redis.port }}"
+            - "--metrics-addr"
+            - "0.0.0.0"
+            - "--metrics-port"
+            - "{{ .Values.nativeWorker.metricsPort }}"
+          env:
+            - name: POSTOFFICE_WORKER_ENGINE
+              value: "native"
+            - name: POSTOFFICE_LOG_FORMAT
+              value: "json"
+            - name: POSTOFFICE_NATIVE_PERCENTAGE
+              value: "{{ .Values.canary.nativePercentage }}"
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.nativeWorker.metricsPort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.nativeWorker.resources | nindent 12 }}

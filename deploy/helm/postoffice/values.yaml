@@ -1,0 +1,41 @@
+environment: prod
+canary:
+  enabled: true
+  nativePercentage: 25
+  stages: [5, 25, 100]
+  maxErrorRate: 0.01
+  maxLagMessages: 1000
+  maxP99LatencyMs: 5.0
+
+redis:
+  host: postoffice-redis
+  port: 6379
+  tls: false
+
+pythonWorker:
+  replicas: 3
+  image:
+    repository: ghcr.io/meso/postoffice-python
+    tag: "1.0.0"
+  metricsPort: 9100
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+nativeWorker:
+  replicas: 7
+  image:
+    repository: ghcr.io/meso/postoffice-native
+    tag: "1.0.0"
+  metricsPort: 9100
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "64Mi"
+    limits:
+      cpu: "1000m"
+      memory: "128Mi"

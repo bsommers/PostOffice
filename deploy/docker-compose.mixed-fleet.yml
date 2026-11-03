@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: postoffice-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    container_name: postoffice-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ../configs/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: postoffice-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+
+  postoffice-worker-python:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: postoffice-worker-python
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      POSTOFFICE_WORKER_ENGINE: python
+      POSTOFFICE_LOG_FORMAT: json
+      POSTOFFICE_METRICS_PORT: "9100"
+      POSTOFFICE_METRICS_ADDR: "0.0.0.0"
+    ports:
+      - "9101:9100"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9100/healthz", "http://127.0.0.1:9100/readyz"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  postoffice-worker-native:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: postoffice-worker-native
+    command: ["/usr/local/bin/postoffice-worker", "--redis-host", "redis", "--redis-port", "6379", "--metrics-addr", "0.0.0.0", "--metrics-port", "9100"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      POSTOFFICE_WORKER_ENGINE: native
+      POSTOFFICE_LOG_FORMAT: json
+    ports:
+      - "9102:9100"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9100/healthz", "http://127.0.0.1:9100/readyz"]
+      interval: 10s
+      timeout: 2s
+      retries: 3

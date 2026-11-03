@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postoffice-worker-python
+  labels:
+    app.kubernetes.io/name: postoffice
+    app.kubernetes.io/component: worker-python
+    postoffice.io/engine: python
+spec:
+  replicas: {{ .Values.pythonWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postoffice
+      postoffice.io/engine: python
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postoffice
+        postoffice.io/engine: python
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.pythonWorker.metricsPort }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: worker-python
+          image: "{{ .Values.pythonWorker.image.repository }}:{{ .Values.pythonWorker.image.tag }}"
+          env:
+            - name: REDIS_HOST
+              value: "{{ .Values.redis.host }}"
+            - name: REDIS_PORT
+              value: "{{ .Values.redis.port }}"
+            - name: POSTOFFICE_WORKER_ENGINE
+              value: "python"
+            - name: POSTOFFICE_LOG_FORMAT
+              value: "json"
+            - name: POSTOFFICE_NATIVE_PERCENTAGE
+              value: "{{ .Values.canary.nativePercentage }}"
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.pythonWorker.metricsPort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.pythonWorker.resources | nindent 12 }}

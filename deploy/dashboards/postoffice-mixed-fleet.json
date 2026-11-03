@@ -1,0 +1,79 @@
+{
+  "title": "PostOffice Mixed-Fleet Canary & SLO Dashboard",
+  "uid": "postoffice-mixed-fleet-v1",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Throughput by Engine (msg/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (engine, source_broker, target_broker) (rate(postoffice_messages_routed_total{status=\"success\"}[1m]))",
+          "legendFormat": "{{engine}}: {{source_broker}} -> {{target_broker}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Bridge-Added Latency p99 (< 5 ms SLO)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, source_broker) (rate(postoffice_routing_duration_seconds_bucket[1m]))) * 1000",
+          "legendFormat": "p99 {{source_broker}} (ms)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Routing Error Rate & Canary Rollback Threshold",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(postoffice_routing_errors_total[1m])) / clamp_min(sum(rate(postoffice_messages_routed_total[1m])), 1)",
+          "legendFormat": "cluster_error_rate"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "DLQ Admissions & Refusals",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (source_broker) (rate(postoffice_dlq_messages_total[1m]))",
+          "legendFormat": "dlq_admitted:{{source_broker}}"
+        },
+        {
+          "expr": "sum by (reason) (rate(postoffice_dlq_refused_total[1m]))",
+          "legendFormat": "dlq_refused:{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Ingress Firewall Drops & Rejections",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (rule, action) (rate(postoffice_ingress_total[1m]))",
+          "legendFormat": "{{rule}} ({{action}})"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Control-Plane Sync Convergence Outcomes",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(postoffice_control_events_total[1m]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    }
+  ]
+}

@@ -69,6 +69,7 @@ class DataPlane:
         self.channel = "postoffice:config_updates"
         self._stop_event = threading.Event()
         self._init_convergence_state()
+        self.po.router.metrics.set_readiness_probe(lambda: (self._synced_once, self._version or 0))
         self._init_limits(max_event_bytes, event_rate, event_burst, allowed_actions, allow_clear_state)
         # Explicit signer wins; otherwise POSTOFFICE_EVENT_KEYS. A key means enforce unless told otherwise.
         self.signer = signer if signer is not None else HmacSigner.from_env()

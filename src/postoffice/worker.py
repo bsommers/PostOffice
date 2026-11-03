@@ -1,8 +1,16 @@
 import os
 import logging
 from postoffice.data_plane import DataPlane
+from postoffice.logging_config import configure_structured_logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+if os.environ.get("POSTOFFICE_LOG_FORMAT", "").lower() == "json":
+    configure_structured_logging(
+        level=logging.INFO,
+        engine=os.environ.get("POSTOFFICE_WORKER_ENGINE", "python"),
+        worker_id=os.environ.get("POSTOFFICE_WORKER_ID"),
+    )
+else:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def main():

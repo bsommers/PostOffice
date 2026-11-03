@@ -1,10 +1,72 @@
 import logging
 from typing import Callable, Optional, Tuple
 import threading
-from wsgiref.simple_server import WSGIServer
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest, start_http_server
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest, make_wsgi_app
 
 logger = logging.getLogger(__name__)
+
+
+class _QuietWSGIHandler(WSGIRequestHandler):
+    def log_message(self, format: str, *args) -> None:
+        pass
+
+
+class _ReuseAddrWSGIServer(WSGIServer):
+    allow_reuse_address = True
+
+
+def start_http_server(
+    port: int,
+    addr: str = "127.0.0.1",
+    registry: Optional[CollectorRegistry] = None,
+) -> Tuple[WSGIServer, threading.Thread]:
+    """
+    Starts a background WSGI HTTP server serving `/metrics`, `/healthz`, and `/readyz`
+    with exact operational parity between Python and Native workers.
+    """
+    prom_app = make_wsgi_app(registry) if registry is not None else make_wsgi_app()
+
+    def _app(environ, start_response):
+        path = environ.get("PATH_INFO", "/metrics")
+        if path.startswith("/healthz"):
+            body = b'{"status":"ok","version":"1.0.0"}\n'
+            start_response(
+                "200 OK",
+                [
+                    ("Content-Type", "application/json"),
+                    ("Content-Length", str(len(body))),
+                ],
+            )
+            return [body]
+        if path.startswith("/readyz"):
+            probe = getattr(registry, "_postoffice_readiness_fn", None)
+            ready, applied_version = probe() if callable(probe) else (True, 0)
+            status = "200 OK" if ready else "503 Service Unavailable"
+            ready_str = "true" if ready else "false"
+            body = f'{{"ready":{ready_str},"applied_version":{int(applied_version)}}}\n'.encode(
+                "utf-8"
+            )
+            start_response(
+                status,
+                [
+                    ("Content-Type", "application/json"),
+                    ("Content-Length", str(len(body))),
+                ],
+            )
+            return [body]
+        return prom_app(environ, start_response)
+
+    httpd = make_server(
+        addr,
+        port,
+        _app,
+        server_class=_ReuseAddrWSGIServer,
+        handler_class=_QuietWSGIHandler,
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, thread
 
 class LabelGuard:
     """
@@ -42,6 +104,8 @@ class MetricsManager:
         self._max_label_values = max_label_values
         LabelGuard(max_label_values)  # validate eagerly
         self.registry = registry or CollectorRegistry(auto_describe=True)
+        self._readiness_fn: Callable[[], Tuple[bool, int]] = lambda: (True, 0)
+        setattr(self.registry, "_postoffice_readiness_fn", lambda: self._readiness_fn())
         self._server_handle: Optional[Tuple[WSGIServer, threading.Thread]] = None
         self._server_lock = threading.Lock()
 
@@ -164,6 +228,20 @@ class MetricsManager:
             dlq_broker=self._label('dlq_broker', dlq_broker),
             dlq_topic=self._label('dlq_topic', dlq_topic)
         ).inc()
+
+    def set_readiness_probe(self, readiness_fn: Callable[[], Tuple[bool, int]]) -> None:
+        """Configures the `(ready, applied_version)` callback queried by `/readyz`."""
+        self._readiness_fn = readiness_fn
+        setattr(self.registry, "_postoffice_readiness_fn", lambda: self._readiness_fn())
+
+    @property
+    def bound_port(self) -> Optional[int]:
+        """Returns the bound TCP port of the running HTTP server, or None if stopped."""
+        with self._server_lock:
+            if self._server_handle is None:
+                return None
+            server, _ = self._server_handle
+            return getattr(server, "server_port", None)
 
     def get_metrics_text(self) -> str:
         """Returns the Prometheus text-formatted metrics snapshot."""

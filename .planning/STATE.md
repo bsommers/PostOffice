@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Native Rewrite Phase 3 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 3: Native Data Plane worker `postoffice-worker` binary & `Engine` in `native/libpostoffice/src/engine.rs`, RESP2 T7 subscribe-before-snapshot Redis sync in `native/libpostoffice/src/redis_sync.rs`, D9 HMAC-SHA256 signing & action validation in `native/libpostoffice/src/signing.rs`, Kafka K1/K2 contiguous offset watermark tracker & adapter state in `native/libpostoffice/src/adapters.rs`, and `ShadowHarness` differential soak in `src/postoffice/shadow.py`; 573/573 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
+**Current focus:** Native Rewrite Phase 4 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 4: Mixed-fleet rollout with control-plane `engine=native|python|all|canary` route tagging, `CanaryRolloutController` `5% -> 25% -> 100%` ramp and automatic rollback in `src/postoffice/rollout.py`, HTTP `/healthz` and `/readyz` probe parity in `src/postoffice/metrics.py`, structured JSON logging in `src/postoffice/logging_config.py`, and deployment/dashboard/runbook artifacts in `deploy/` and `docs/runbooks/mixed-fleet-rollout.md`; 580/580 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
 
 ## Current Position
 
-Phase: Native Rewrite Phase 3 (Native Data Plane worker, read path first, protocol adapters, and shadow mode soak) — Complete
-Plan: 3 of 3 quick slices in Phase 3 completed (`261102-p3a`, `261102-p3b`, `261102-p3c`)
-Status: Phases 0, 1, 2, and 3 complete; 573 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-02b.md`
-Last activity: 2026-11-02 — Completed Native Rewrite Phase 3 (`native/libpostoffice/src/engine.rs`, `redis_sync.rs`, `signing.rs`, `adapters.rs`, `src/postoffice/shadow.py`, `tests/test_phase3_*.py`)
+Phase: Native Rewrite Phase 4 (Mixed-fleet rollout, canary controller, and operational parity) — Complete
+Plan: 2 of 2 quick slices in Phase 4 completed (`261103-p4a`, `261103-p4b`)
+Status: Phases 0, 1, 2, 3, and 4 complete; 580 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-03a.md`
+Last activity: 2026-11-03 — Completed Native Rewrite Phase 4 (`src/postoffice/rollout.py`, `src/postoffice/logging_config.py`, `src/postoffice/metrics.py`, `deploy/`, `docs/runbooks/mixed-fleet-rollout.md`, `tests/test_phase4_*.py`)
 
 Progress: [██████████] 100%
 
