@@ -80,6 +80,8 @@ typedef struct po_firewall_t po_firewall_t;
 typedef struct po_governor_t po_governor_t;
 typedef struct po_codec_t po_codec_t;
 typedef struct po_client_t po_client_t;
+typedef struct po_signer_t po_signer_t;
+typedef struct po_dlq_budget_t po_dlq_budget_t;
 
 /** Return the compiled `PO_ABI_VERSION` of the loaded shared library. */
 uint32_t po_abi_version(void);
@@ -263,6 +265,126 @@ po_status_t po_client_publish(
     po_slice_t payload,
     po_slice_t sender_id,
     po_owned_buf_t *out_response_json
+);
+
+/* =========================================================================
+ * Phase 3: D9 Signing, Action Validation, DLQ Budget, & Engine (`po_engine_t`)
+ * ========================================================================= */
+
+po_status_t po_signer_new(po_slice_t keyring, po_signer_t **out_signer);
+void po_signer_free(po_signer_t *signer);
+
+po_status_t po_signer_sign_event(
+    const po_signer_t *signer,
+    po_slice_t payload,
+    po_owned_buf_t *out_json
+);
+
+po_status_t po_signer_sign_state(
+    const po_signer_t *signer,
+    po_slice_t hash_name,
+    po_slice_t field,
+    po_slice_t payload,
+    po_owned_buf_t *out_json
+);
+
+po_status_t po_signer_sign_version(
+    const po_signer_t *signer,
+    int64_t version,
+    po_owned_buf_t *out_json
+);
+
+po_status_t po_signer_verify_event(
+    const po_signer_t *signer,
+    po_slice_t envelope_json
+);
+
+po_status_t po_signer_verify_state(
+    const po_signer_t *signer,
+    po_slice_t hash_name,
+    po_slice_t field,
+    po_slice_t envelope_json
+);
+
+po_status_t po_signer_verify_version(
+    const po_signer_t *signer,
+    int64_t version,
+    po_slice_t entry_json
+);
+
+po_status_t po_validate_action(po_slice_t action, po_slice_t data_json);
+
+po_status_t po_dlq_format_payload(
+    po_slice_t original_payload,
+    po_slice_t source_broker,
+    po_slice_t source_topic,
+    po_slice_t error_msg,
+    po_slice_t metadata_json,
+    po_slice_t timestamp,
+    po_owned_buf_t *out_bytes
+);
+
+po_status_t po_dlq_budget_new(
+    size_t max_message_bytes,
+    double msgs_per_sec,
+    double bytes_per_sec,
+    size_t max_sources,
+    double dedupe_window_sec,
+    size_t max_fingerprints,
+    po_dlq_budget_t **out_budget
+);
+void po_dlq_budget_free(po_dlq_budget_t *budget);
+
+po_status_t po_dlq_budget_admit(
+    po_dlq_budget_t *budget,
+    po_slice_t source_broker,
+    po_slice_t source_topic,
+    po_slice_t error_msg,
+    po_slice_t payload,
+    bool metadata_only,
+    double now_sec,
+    po_owned_buf_t *out_admission_json
+);
+
+po_status_t po_engine_new(uint32_t max_label_values, po_engine_t **out_engine);
+void po_engine_free(po_engine_t *engine);
+
+po_status_t po_engine_apply_action(
+    po_engine_t *engine,
+    po_slice_t action,
+    po_slice_t data_json
+);
+
+po_status_t po_engine_route(
+    po_engine_t *engine,
+    po_slice_t source_broker,
+    po_slice_t source_topic,
+    po_slice_t payload,
+    po_slice_t source_kwargs_json,
+    double now_sec,
+    po_owned_buf_t *out_outcome_json
+);
+
+po_status_t po_engine_metrics_text(
+    const po_engine_t *engine,
+    po_owned_buf_t *out_text
+);
+
+po_status_t po_engine_start_metrics_server(
+    po_engine_t *engine,
+    po_slice_t addr,
+    uint16_t port,
+    uint16_t *out_bound_port
+);
+
+po_status_t po_engine_stop_metrics_server(po_engine_t *engine);
+
+po_status_t po_engine_sync_redis(
+    po_engine_t *engine,
+    po_slice_t host,
+    uint16_t port,
+    double now_sec,
+    po_owned_buf_t *out_report_json
 );
 
 #ifdef __cplusplus

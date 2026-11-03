@@ -22,6 +22,17 @@ def format_dlq_payload(
     Wraps an original messaging payload and forensic failure details into a JSON envelope.
     Binary payloads that are not valid UTF-8 are Base64-encoded to ensure safe serialization.
     """
+    from postoffice.native import is_native_enabled, native_format_dlq_payload
+    if is_native_enabled():
+        ts_val = timestamp if timestamp is not None else datetime.now(timezone.utc).isoformat()
+        return native_format_dlq_payload(
+            original_payload,
+            source_broker,
+            source_topic,
+            str(error),
+            metadata=metadata or {},
+            timestamp=ts_val,
+        )
     try:
         payload_str = original_payload.decode('utf-8')
         is_base64 = False

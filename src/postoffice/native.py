@@ -281,6 +281,139 @@ def _bind_signatures(lib: ctypes.CDLL) -> None:
     ]
     lib.po_client_publish.restype = ctypes.c_int
 
+    lib.po_signer_new.argtypes = [PoSlice, ctypes.POINTER(ctypes.c_void_p)]
+    lib.po_signer_new.restype = ctypes.c_int
+
+    lib.po_signer_free.argtypes = [ctypes.c_void_p]
+    lib.po_signer_free.restype = None
+
+    lib.po_signer_sign_event.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_signer_sign_event.restype = ctypes.c_int
+
+    lib.po_signer_sign_state.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_signer_sign_state.restype = ctypes.c_int
+
+    lib.po_signer_sign_version.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_signer_sign_version.restype = ctypes.c_int
+
+    lib.po_signer_verify_event.argtypes = [ctypes.c_void_p, PoSlice]
+    lib.po_signer_verify_event.restype = ctypes.c_int
+
+    lib.po_signer_verify_state.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+    ]
+    lib.po_signer_verify_state.restype = ctypes.c_int
+
+    lib.po_signer_verify_version.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        PoSlice,
+    ]
+    lib.po_signer_verify_version.restype = ctypes.c_int
+
+    lib.po_validate_action.argtypes = [PoSlice, PoSlice]
+    lib.po_validate_action.restype = ctypes.c_int
+
+    lib.po_dlq_format_payload.argtypes = [
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_dlq_format_payload.restype = ctypes.c_int
+
+    lib.po_dlq_budget_new.argtypes = [
+        ctypes.c_size_t,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_size_t,
+        ctypes.c_double,
+        ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    lib.po_dlq_budget_new.restype = ctypes.c_int
+
+    lib.po_dlq_budget_free.argtypes = [ctypes.c_void_p]
+    lib.po_dlq_budget_free.restype = None
+
+    lib.po_dlq_budget_admit.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.c_bool,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_dlq_budget_admit.restype = ctypes.c_int
+
+    lib.po_engine_new.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)]
+    lib.po_engine_new.restype = ctypes.c_int
+
+    lib.po_engine_free.argtypes = [ctypes.c_void_p]
+    lib.po_engine_free.restype = None
+
+    lib.po_engine_apply_action.argtypes = [ctypes.c_void_p, PoSlice, PoSlice]
+    lib.po_engine_apply_action.restype = ctypes.c_int
+
+    lib.po_engine_route.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_engine_route.restype = ctypes.c_int
+
+    lib.po_engine_metrics_text.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_engine_metrics_text.restype = ctypes.c_int
+
+    lib.po_engine_start_metrics_server.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_uint16,
+        ctypes.POINTER(ctypes.c_uint16),
+    ]
+    lib.po_engine_start_metrics_server.restype = ctypes.c_int
+
+    lib.po_engine_stop_metrics_server.argtypes = [ctypes.c_void_p]
+    lib.po_engine_stop_metrics_server.restype = ctypes.c_int
+
+    lib.po_engine_sync_redis.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        ctypes.c_uint16,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_engine_sync_redis.restype = ctypes.c_int
+
 
 def _consume_owned_buf(lib: ctypes.CDLL, buf: PoOwnedBuf) -> bytes:
     try:
@@ -564,3 +697,299 @@ def native_dlq_fingerprint(
     if rc != PO_OK:
         raise RuntimeError(f"po_dlq_fingerprint failed with status {rc}")
     return out_hex.value.decode("ascii")
+
+
+def native_validate_action(action: str, data: Dict[str, Any]) -> bool:
+    lib = get_libpostoffice()
+    a_s, _b1 = _to_slice(action.encode("utf-8"))
+    d_s, _b2 = _to_slice(json.dumps(data).encode("utf-8"))
+    rc = lib.po_validate_action(a_s, d_s)
+    return rc == PO_OK
+
+
+def native_format_dlq_payload(
+    original_payload: bytes,
+    source_broker: str,
+    source_topic: str,
+    error: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    timestamp: Optional[str] = None,
+) -> bytes:
+    lib = get_libpostoffice()
+    p_s, _b1 = _to_slice(original_payload)
+    sb_s, _b2 = _to_slice(source_broker.encode("utf-8"))
+    st_s, _b3 = _to_slice(source_topic.encode("utf-8"))
+    e_s, _b4 = _to_slice(str(error).encode("utf-8"))
+    m_bytes = json.dumps(metadata).encode("utf-8") if metadata is not None else b""
+    m_s, _b5 = _to_slice(m_bytes)
+    ts_bytes = timestamp.encode("utf-8") if timestamp is not None else b""
+    ts_s, _b6 = _to_slice(ts_bytes)
+    out = PoOwnedBuf()
+    rc = lib.po_dlq_format_payload(
+        p_s, sb_s, st_s, e_s, m_s, ts_s, ctypes.byref(out)
+    )
+    if rc != PO_OK:
+        raise RuntimeError(f"po_dlq_format_payload failed with status {rc}")
+    return _consume_owned_buf(lib, out)
+
+
+class NativeSigner:
+    """FFI wrapper over `po_signer_t` (D9 HMAC-SHA256 signer/verifier)."""
+
+    def __init__(self, keyring: str) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        k_s, _b = _to_slice(keyring.encode("utf-8"))
+        rc = self._lib.po_signer_new(k_s, ctypes.byref(self._handle))
+        if rc != PO_OK:
+            raise ValueError(f"Invalid keyring for NativeSigner (status {rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_signer_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def sign_event(self, payload: str) -> str:
+        p_s, _b = _to_slice(payload.encode("utf-8"))
+        out = PoOwnedBuf()
+        rc = self._lib.po_signer_sign_event(self._handle, p_s, ctypes.byref(out))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_signer_sign_event failed ({rc})")
+        return _consume_owned_buf(self._lib, out).decode("utf-8")
+
+    def sign_state(self, hash_name: str, field: str, payload: str) -> str:
+        h_s, _b1 = _to_slice(hash_name.encode("utf-8"))
+        f_s, _b2 = _to_slice(field.encode("utf-8"))
+        p_s, _b3 = _to_slice(payload.encode("utf-8"))
+        out = PoOwnedBuf()
+        rc = self._lib.po_signer_sign_state(
+            self._handle, h_s, f_s, p_s, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_signer_sign_state failed ({rc})")
+        return _consume_owned_buf(self._lib, out).decode("utf-8")
+
+    def sign_version(self, version: int) -> str:
+        out = PoOwnedBuf()
+        rc = self._lib.po_signer_sign_version(
+            self._handle, int(version), ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_signer_sign_version failed ({rc})")
+        return _consume_owned_buf(self._lib, out).decode("utf-8")
+
+    def verify_event(self, envelope_json: str) -> bool:
+        e_s, _b = _to_slice(envelope_json.encode("utf-8"))
+        return self._lib.po_signer_verify_event(self._handle, e_s) == PO_OK
+
+    def verify_state(self, hash_name: str, field: str, envelope_json: str) -> bool:
+        h_s, _b1 = _to_slice(hash_name.encode("utf-8"))
+        f_s, _b2 = _to_slice(field.encode("utf-8"))
+        e_s, _b3 = _to_slice(envelope_json.encode("utf-8"))
+        return (
+            self._lib.po_signer_verify_state(self._handle, h_s, f_s, e_s)
+            == PO_OK
+        )
+
+    def verify_version(self, version: int, entry_json: str) -> bool:
+        e_s, _b = _to_slice(entry_json.encode("utf-8"))
+        return (
+            self._lib.po_signer_verify_version(self._handle, int(version), e_s)
+            == PO_OK
+        )
+
+
+class NativeDlqBudget:
+    """FFI wrapper over `po_dlq_budget_t`."""
+
+    def __init__(
+        self,
+        max_message_bytes: int = 256 * 1024,
+        msgs_per_sec: float = 100.0,
+        bytes_per_sec: float = 1024.0 * 1024.0,
+        max_sources: int = 1024,
+        dedupe_window: Optional[float] = None,
+        max_fingerprints: int = 4096,
+    ) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        win = float(dedupe_window) if dedupe_window is not None else 0.0
+        rc = self._lib.po_dlq_budget_new(
+            int(max_message_bytes),
+            float(msgs_per_sec),
+            float(bytes_per_sec),
+            int(max_sources),
+            win,
+            int(max_fingerprints),
+            ctypes.byref(self._handle),
+        )
+        if rc != PO_OK:
+            raise ValueError(f"po_dlq_budget_new failed ({rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_dlq_budget_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def admit(
+        self,
+        source_broker: str,
+        source_topic: str,
+        error: str,
+        payload: bytes,
+        metadata_only: bool = False,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        sb_s, _b1 = _to_slice(source_broker.encode("utf-8"))
+        st_s, _b2 = _to_slice(source_topic.encode("utf-8"))
+        e_s, _b3 = _to_slice(error.encode("utf-8"))
+        p_s, _b4 = _to_slice(payload)
+        out = PoOwnedBuf()
+        rc = self._lib.po_dlq_budget_admit(
+            self._handle,
+            sb_s,
+            st_s,
+            e_s,
+            p_s,
+            bool(metadata_only),
+            ts,
+            ctypes.byref(out),
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_dlq_budget_admit failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
+
+class NativeEngine:
+    """FFI wrapper over `po_engine_t` (Phase 3 Native Data Plane Engine)."""
+
+    def __init__(self, max_label_values: int = 100) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        rc = self._lib.po_engine_new(
+            int(max_label_values), ctypes.byref(self._handle)
+        )
+        if rc != PO_OK:
+            raise ValueError(f"po_engine_new failed ({rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_engine_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def apply_action(self, action: str, data: Dict[str, Any]) -> None:
+        a_s, _b1 = _to_slice(action.encode("utf-8"))
+        d_s, _b2 = _to_slice(json.dumps(data).encode("utf-8"))
+        rc = self._lib.po_engine_apply_action(self._handle, a_s, d_s)
+        if rc != PO_OK:
+            raise ValueError(f"po_engine_apply_action({action}) failed ({rc})")
+
+    def register_broker(
+        self, name: str, protocol: str, kwargs: Optional[Dict[str, Any]] = None
+    ) -> None:
+        self.apply_action(
+            "add_broker",
+            {"name": name, "protocol": protocol, "kwargs": kwargs or {}},
+        )
+
+    def add_route(
+        self,
+        source_broker: str,
+        source_topic: str,
+        target_broker: str,
+        target_topic: str,
+        target_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.apply_action(
+            "add_route",
+            {
+                "source_broker": source_broker,
+                "source_topic": source_topic,
+                "target_broker": target_broker,
+                "target_topic": target_topic,
+                "target_kwargs": target_kwargs or {},
+            },
+        )
+
+    def set_dlq(self, broker: str, topic: str) -> None:
+        self.apply_action("set_dlq", {"broker": broker, "topic": topic})
+
+    def set_unroutable_policy(
+        self, policy: str, broker: Optional[str] = None
+    ) -> None:
+        data: Dict[str, Any] = {"policy": policy}
+        if broker is not None:
+            data["broker"] = broker
+        self.apply_action("set_unroutable_policy", data)
+
+    def set_ingress(self, config: Dict[str, Any]) -> None:
+        self.apply_action("set_ingress", config)
+
+    def route(
+        self,
+        source_broker: str,
+        source_topic: str,
+        payload: bytes,
+        source_kwargs: Optional[Dict[str, Any]] = None,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        sb_s, _b1 = _to_slice(source_broker.encode("utf-8"))
+        st_s, _b2 = _to_slice(source_topic.encode("utf-8"))
+        p_s, _b3 = _to_slice(payload)
+        skw_bytes = (
+            json.dumps(source_kwargs).encode("utf-8")
+            if source_kwargs
+            else b"{}"
+        )
+        skw_s, _b4 = _to_slice(skw_bytes)
+        out = PoOwnedBuf()
+        rc = self._lib.po_engine_route(
+            self._handle, sb_s, st_s, p_s, skw_s, ts, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_engine_route failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
+    def metrics_text(self) -> str:
+        out = PoOwnedBuf()
+        rc = self._lib.po_engine_metrics_text(self._handle, ctypes.byref(out))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_engine_metrics_text failed ({rc})")
+        return _consume_owned_buf(self._lib, out).decode("utf-8")
+
+    def start_metrics_server(
+        self, addr: str = "127.0.0.1", port: int = 0
+    ) -> int:
+        a_s, _b = _to_slice(addr.encode("utf-8"))
+        bound_port = ctypes.c_uint16(0)
+        rc = self._lib.po_engine_start_metrics_server(
+            self._handle, a_s, int(port), ctypes.byref(bound_port)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_engine_start_metrics_server failed ({rc})")
+        return int(bound_port.value)
+
+    def stop_metrics_server(self) -> None:
+        self._lib.po_engine_stop_metrics_server(self._handle)
+
+    def sync_from_redis(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 6379,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        h_s, _b = _to_slice(host.encode("utf-8"))
+        out = PoOwnedBuf()
+        rc = self._lib.po_engine_sync_redis(
+            self._handle, h_s, int(port), ts, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_engine_sync_redis failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
