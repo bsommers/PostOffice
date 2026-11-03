@@ -19,6 +19,9 @@ def encode_wire_format(payload: bytes, schema_id: int) -> bytes:
     Bytes 1-4: 4-byte big-endian unsigned integer representing schema_id
     Bytes 5+: Serialized message payload
     """
+    from postoffice.native import is_native_enabled, native_encode_confluent
+    if is_native_enabled():
+        return native_encode_confluent(payload, schema_id)
     return b'\x00' + struct.pack('>I', schema_id) + payload
 
 
@@ -31,6 +34,10 @@ def decode_wire_format(data: bytes) -> Tuple[int, bytes]:
         raise SchemaValidationError(f"Payload too short for wire format framing (expected >= 5 bytes, got {len(data)})")
     if data[0] != 0:
         raise SchemaValidationError(f"Invalid wire format magic byte: expected 0x00, got {hex(data[0])}")
+
+    from postoffice.native import is_native_enabled, native_decode_confluent
+    if is_native_enabled():
+        return native_decode_confluent(data)
 
     schema_id = struct.unpack('>I', data[1:5])[0]
     payload = data[5:]

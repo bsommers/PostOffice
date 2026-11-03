@@ -17,12 +17,19 @@ class TopicTrie:
     def __init__(self):
         self.root = TrieNode()
         self._count = 0
+        from postoffice.native import NativeTrie, is_native_enabled
+        self._native: Optional[NativeTrie] = NativeTrie() if is_native_enabled() else None
 
     def insert(self, topic_pattern: str, route_data: Any) -> None:
         """
         Inserts a topic pattern and associated route configuration into the trie.
         Raises ValueError if MQTT wildcard placement rules are violated.
         """
+        if self._native is not None:
+            self._native.insert_python_payload(topic_pattern, route_data)
+            self._count += 1
+            return
+
         segments = topic_pattern.split('/')
         for i, seg in enumerate(segments):
             if seg == '#' and i != len(segments) - 1:
@@ -56,6 +63,9 @@ class TopicTrie:
         where k is the number of segments in the topic.
         Returns all matching route configurations across exact and wildcard branches.
         """
+        if self._native is not None:
+            return self._native.match_python_payloads(topic)
+
         segments = topic.split('/')
         results: List[Any] = []
         is_dollar_topic = topic.startswith('$')
@@ -91,6 +101,9 @@ class TopicTrie:
         """Clears all routes from the trie."""
         self.root = TrieNode()
         self._count = 0
+        if self._native is not None:
+            from postoffice.native import NativeTrie
+            self._native = NativeTrie()
 
     def __len__(self) -> int:
         return self._count

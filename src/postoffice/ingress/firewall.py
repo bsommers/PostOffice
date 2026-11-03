@@ -22,10 +22,18 @@ class Firewall:
     """Ordered rule chain evaluated before routing. The first non-ALLOW verdict wins."""
 
     def __init__(self, rules: List[Rule], on_rule_error: Action = Action.REJECT,
-                 ledger: Optional[SenderLedger] = None):
+                 ledger: Optional[SenderLedger] = None, _native: Any = None):
         self.rules = list(rules)
         self.on_rule_error = parse_action(on_rule_error)
         self.ledger = ledger
+        self._native = _native
+
+    def sender_report(self, top: int = 10) -> List[Dict[str, Any]]:
+        if self._native is not None:
+            return self._native.sender_report(top=top)
+        if self.ledger is None:
+            return []
+        return self.ledger.sender_report(top=top)
 
     def note(self, ctx: MessageContext, category: Optional[str]) -> None:
         """Attributes an event to its sender in the ledger; a ledger fault never affects routing."""
@@ -50,6 +58,8 @@ class Firewall:
         return Verdict(Action.DROP, "cooldown", "cooled", f"sender '{key}' cooled until {until:.0f}")
 
     def evaluate(self, ctx: MessageContext) -> Verdict:
+        if self._native is not None:
+            return self._native.evaluate(ctx)
         verdict = self._cooled_verdict(ctx)
         if verdict is None:
             verdict = self._run_rules(ctx)
@@ -83,4 +93,12 @@ class Firewall:
             rules.append(RULE_TYPES[rule_type](**spec))
         ledger_config = config.get("ledger")
         ledger = SenderLedger(**ledger_config) if ledger_config is not None else None
-        return cls(rules, on_rule_error=parse_action(config.get("on_rule_error", "reject")), ledger=ledger)
+        native_fw = None
+        from postoffice.native import NativeFirewall, is_native_enabled
+        if is_native_enabled():
+            has_non_json_guard = any(
+                isinstance(r, ContentGuard) and r.format != "json" for r in rules
+            )
+            if not has_non_json_guard:
+                native_fw = NativeFirewall(config)
+        return cls(rules, on_rule_error=parse_action(config.get("on_rule_error", "reject")), ledger=ledger, _native=native_fw)

@@ -50,6 +50,9 @@ class Admission:
 
 def dlq_fingerprint(source_broker: str, source_topic: str, error: str, payload: bytes) -> str:
     """Stable identity of a dead-lettered message, for collapsing identical repeats."""
+    from postoffice.native import is_native_enabled, native_dlq_fingerprint
+    if is_native_enabled():
+        return native_dlq_fingerprint(source_broker, source_topic, str(error), payload)
     h = hashlib.blake2b(digest_size=16)
     for part in (source_broker, source_topic, error):
         h.update(part.encode("utf-8", "replace") + b"\x00")

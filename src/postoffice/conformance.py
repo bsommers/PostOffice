@@ -615,8 +615,57 @@ def _generate_topic_matching_vectors() -> Dict[str, Any]:
 
 
 def _generate_firewall_vectors() -> Dict[str, Any]:
+    from postoffice.native import NativeFirewall, is_native_enabled
+
     now = [1000.0]
     clock = lambda: now[0]
+
+    if is_native_enabled():
+        fw_cfg = {
+            "rules": [
+                {"type": "max_payload_bytes", "max_bytes": 64, "action": "reject"},
+                {
+                    "type": "topic_shape",
+                    "max_length": 64,
+                    "max_depth": 5,
+                    "deny": ["$SYS/#", "+/admin"],
+                    "action": "reject",
+                },
+                {
+                    "type": "rate_limit",
+                    "rate": 2.0,
+                    "burst": 2.0,
+                    "key": "identity",
+                    "template": "devices/{device}/#",
+                    "action": "drop",
+                },
+                {
+                    "type": "content_guard",
+                    "topic": "devices/+/telemetry",
+                    "format": "json",
+                    "max_bytes": 64,
+                    "max_depth": 4,
+                    "max_keys": 16,
+                    "max_array_length": 8,
+                    "required_fields": ["temp", "unit"],
+                    "field_ranges": {"temp": {"min": -40.0, "max": 125.0}},
+                    "enums": {"unit": ["C", "F"]},
+                    "action": "reject",
+                },
+            ],
+            "ledger": {
+                "window": 60.0,
+                "identity_template": "devices/{device}/#",
+                "enforce": True,
+                "strike_threshold": 3,
+                "cooldown_base": 30.0,
+                "cooldown_factor": 2.0,
+                "cooldown_cap": 300.0,
+            },
+        }
+        native_fw = NativeFirewall(fw_cfg, clock=clock)
+    else:
+        native_fw = None
 
     ledger = SenderLedger(
         window=60.0,
@@ -763,7 +812,11 @@ def _generate_firewall_vectors() -> Dict[str, Any]:
             size=len(raw),
             payload=raw,
         )
-        verdict = fw.evaluate(ctx)
+        verdict = (
+            native_fw.evaluate(ctx, now=now[0])
+            if native_fw is not None
+            else fw.evaluate(ctx)
+        )
         results.append(
             {
                 "step": item["step"],
@@ -780,11 +833,17 @@ def _generate_firewall_vectors() -> Dict[str, Any]:
             }
         )
 
+    final_report = (
+        native_fw.sender_report(top=10, now=now[0])
+        if native_fw is not None
+        else ledger.sender_report(top=10)
+    )
+
     return {
         "schema_version": 1,
         "suite": "firewall_verdicts",
         "steps": results,
-        "final_sender_report": ledger.sender_report(top=10),
+        "final_sender_report": final_report,
     }
 
 
@@ -907,14 +966,25 @@ def _generate_wire_framing_vectors() -> Dict[str, Any]:
     sample_obj = {"id": "dev-1", "temp": 21.5}
     raw_json = json.dumps(sample_obj, sort_keys=True).encode("utf-8")
     framed_json = encode_wire_format(raw_json, 1)
-    framed_avro = conv.serialize(
-        sample_obj, "avro", schema_name="reading_avro", wire_format=True
-    )
-    framed_proto = conv.serialize(
-        sample_obj, "protobuf", schema_name="reading_proto", wire_format=True
-    )
-    decoded_avro = conv.deserialize(framed_avro, "avro", wire_format=True)
-    decoded_proto = conv.deserialize(framed_proto, "protobuf", wire_format=True)
+
+    from postoffice.native import NativeCodec, is_native_enabled
+    if is_native_enabled():
+        ncodec = NativeCodec()
+        ncodec.register_schema(id_avro, "reading_avro", "AVRO", avro_schema)
+        ncodec.register_schema(id_proto, "reading_proto", "PROTOBUF", proto_schema)
+        framed_avro = ncodec.serialize(sample_obj, "avro", schema_name="reading_avro", wire_format=True)
+        framed_proto = ncodec.serialize(sample_obj, "protobuf", schema_name="reading_proto", wire_format=True)
+        decoded_avro = ncodec.deserialize(framed_avro, "avro", wire_format=True)
+        decoded_proto = ncodec.deserialize(framed_proto, "protobuf", wire_format=True)
+    else:
+        framed_avro = conv.serialize(
+            sample_obj, "avro", schema_name="reading_avro", wire_format=True
+        )
+        framed_proto = conv.serialize(
+            sample_obj, "protobuf", schema_name="reading_proto", wire_format=True
+        )
+        decoded_avro = conv.deserialize(framed_avro, "avro", wire_format=True)
+        decoded_proto = conv.deserialize(framed_proto, "protobuf", wire_format=True)
 
     error_cases = []
     for name, raw in [
