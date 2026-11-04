@@ -83,6 +83,8 @@ typedef struct po_client_t po_client_t;
 typedef struct po_signer_t po_signer_t;
 typedef struct po_dlq_budget_t po_dlq_budget_t;
 typedef struct po_kafka_tracker_t po_kafka_tracker_t;
+typedef struct po_target_queue_t po_target_queue_t;
+typedef struct po_disk_store_t po_disk_store_t;
 
 /** Return the compiled `PO_ABI_VERSION` of the loaded shared library. */
 uint32_t po_abi_version(void);
@@ -417,6 +419,76 @@ po_status_t po_kafka_tracker_reset(
     po_kafka_tracker_t *tracker,
     po_slice_t topic,
     int32_t partition
+);
+
+/* =========================================================================
+ * Phase 5: Per-Target Bounded Queues & Edge Disk Store-and-Forward
+ * ========================================================================= */
+
+po_status_t po_target_queue_new(
+    size_t max_messages,
+    size_t max_bytes,
+    double max_age_sec,
+    po_slice_t overflow_policy,
+    po_target_queue_t **out_queue
+);
+void po_target_queue_free(po_target_queue_t *queue);
+
+po_status_t po_target_queue_enqueue(
+    po_target_queue_t *queue,
+    po_slice_t topic,
+    po_slice_t payload,
+    po_slice_t kwargs_json,
+    double now_sec,
+    po_owned_buf_t *out_result_json
+);
+
+po_status_t po_target_queue_drain(
+    po_target_queue_t *queue,
+    size_t limit,
+    double now_sec,
+    po_owned_buf_t *out_result_json
+);
+
+po_status_t po_target_queue_stats(
+    const po_target_queue_t *queue,
+    po_owned_buf_t *out_stats_json
+);
+
+po_status_t po_disk_store_open(
+    po_slice_t path,
+    size_t size_cap_bytes,
+    size_t batch_max_messages,
+    size_t batch_max_bytes,
+    double flush_interval_sec,
+    po_slice_t overflow_policy,
+    po_disk_store_t **out_store
+);
+void po_disk_store_free(po_disk_store_t *store);
+
+po_status_t po_disk_store_append(
+    po_disk_store_t *store,
+    po_slice_t topic,
+    po_slice_t payload,
+    po_slice_t kwargs_json,
+    double now_sec,
+    po_owned_buf_t *out_result_json
+);
+
+po_status_t po_disk_store_flush(
+    po_disk_store_t *store,
+    size_t *out_flushed_count
+);
+
+po_status_t po_disk_store_drain(
+    po_disk_store_t *store,
+    size_t limit,
+    po_owned_buf_t *out_messages_json
+);
+
+po_status_t po_disk_store_stats(
+    const po_disk_store_t *store,
+    po_owned_buf_t *out_stats_json
 );
 
 #ifdef __cplusplus

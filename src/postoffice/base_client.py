@@ -43,6 +43,10 @@ class BaseClient(ABC):
         max_publish_buffer_bytes: Optional[int] = 64 * 1024 * 1024,
         max_publish_buffer_age: Optional[float] = None,
         buffer_clock: Callable[[], float] = time.monotonic,
+        disk_store_path: Optional[str] = None,
+        disk_store_batch_messages: int = 32,
+        disk_store_batch_bytes: int = 64 * 1024,
+        disk_store_flush_interval: float = 1.0,
         **kwargs
     ):
         if buffer_overflow_policy not in self.VALID_OVERFLOW_POLICIES:
@@ -66,6 +70,36 @@ class BaseClient(ABC):
         self._queue_lock = threading.RLock()
         self._subscriptions: Dict[str, Dict[str, Any]] = {}
         self._publish_buffer: Deque[BufferedPublish] = deque()
+        self._disk_store: Any = None
+        if disk_store_path is not None and self.enable_publish_buffer:
+            from postoffice.native import NativeDiskStoreAndForward
+
+            cap = max_publish_buffer_bytes or (64 * 1024 * 1024)
+            self._disk_store = NativeDiskStoreAndForward(
+                path=disk_store_path,
+                size_cap_bytes=cap,
+                batch_max_messages=disk_store_batch_messages,
+                batch_max_bytes=disk_store_batch_bytes,
+                flush_interval_sec=disk_store_flush_interval,
+                overflow_policy=buffer_overflow_policy,
+            )
+            for item in self._disk_store.drain(limit=max_publish_buffer_size):
+                msg_bytes = item["payload"]
+                self._publish_buffer.append(
+                    BufferedPublish(
+                        topic=item["topic"],
+                        message=msg_bytes,
+                        kwargs=dict(item.get("kwargs", {})),
+                        size=len(msg_bytes),
+                        enqueued_at=item.get("enqueued_at", self._buffer_clock()),
+                    )
+                )
+                self._publish_buffer_bytes += len(msg_bytes)
+            for bp in self._publish_buffer:
+                self._disk_store.append(
+                    bp.topic, bp.message, bp.kwargs, now_sec=bp.enqueued_at
+                )
+            self._disk_store.flush()
 
     @property
     def publish_buffer_size(self) -> int:
@@ -171,6 +205,10 @@ class BaseClient(ABC):
                     )
                 )
                 self._publish_buffer_bytes += size
+                if self._disk_store is not None:
+                    self._disk_store.append(
+                        topic, message, dict(kwargs), now_sec=now
+                    )
 
         self._notify_expired(expired)
         for item in evicted:
@@ -196,6 +234,8 @@ class BaseClient(ABC):
                 if not self._publish_buffer:
                     break
                 item = self._pop_buffered_locked()
+                if self._disk_store is not None:
+                    self._disk_store.drain(limit=1)
                 stale = self._is_stale(item, self._buffer_clock())
             if stale:
                 self._notify_expired([item])

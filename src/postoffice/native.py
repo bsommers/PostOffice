@@ -452,6 +452,85 @@ def _bind_signatures(lib: ctypes.CDLL) -> None:
     ]
     lib.po_kafka_tracker_reset.restype = ctypes.c_int
 
+    lib.po_target_queue_new.argtypes = [
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_double,
+        PoSlice,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    lib.po_target_queue_new.restype = ctypes.c_int
+
+    lib.po_target_queue_free.argtypes = [ctypes.c_void_p]
+    lib.po_target_queue_free.restype = None
+
+    lib.po_target_queue_enqueue.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_target_queue_enqueue.restype = ctypes.c_int
+
+    lib.po_target_queue_drain.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_target_queue_drain.restype = ctypes.c_int
+
+    lib.po_target_queue_stats.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_target_queue_stats.restype = ctypes.c_int
+
+    lib.po_disk_store_open.argtypes = [
+        PoSlice,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_size_t,
+        ctypes.c_double,
+        PoSlice,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    lib.po_disk_store_open.restype = ctypes.c_int
+
+    lib.po_disk_store_free.argtypes = [ctypes.c_void_p]
+    lib.po_disk_store_free.restype = None
+
+    lib.po_disk_store_append.argtypes = [
+        ctypes.c_void_p,
+        PoSlice,
+        PoSlice,
+        PoSlice,
+        ctypes.c_double,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_disk_store_append.restype = ctypes.c_int
+
+    lib.po_disk_store_flush.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
+    lib.po_disk_store_flush.restype = ctypes.c_int
+
+    lib.po_disk_store_drain.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_disk_store_drain.restype = ctypes.c_int
+
+    lib.po_disk_store_stats.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(PoOwnedBuf),
+    ]
+    lib.po_disk_store_stats.restype = ctypes.c_int
+
 
 def _consume_owned_buf(lib: ctypes.CDLL, buf: PoOwnedBuf) -> bytes:
     try:
@@ -1106,5 +1185,173 @@ class NativeKafkaTracker:
     def reset_partition(self, topic: str, partition: int) -> None:
         t_s, _b = _to_slice(topic.encode("utf-8"))
         self._lib.po_kafka_tracker_reset(self._handle, t_s, int(partition))
+
+
+def _decode_queued_item(raw: Dict[str, Any]) -> Dict[str, Any]:
+    kwargs_raw = raw.get("kwargs_json", "{}")
+    try:
+        kwargs = json.loads(kwargs_raw) if kwargs_raw else {}
+    except Exception:
+        kwargs = {}
+    return {
+        "topic": raw.get("topic", ""),
+        "payload": bytes.fromhex(raw.get("payload_hex", "")),
+        "kwargs": kwargs,
+        "size": int(raw.get("size", 0)),
+        "enqueued_at": float(raw.get("enqueued_at", 0.0)),
+    }
+
+
+class NativeTargetQueue:
+    """FFI wrapper over `po_target_queue_t` (Phase 5 per-target bounded publish queue)."""
+
+    def __init__(
+        self,
+        max_messages: int = 1000,
+        max_bytes: Optional[int] = 64 * 1024 * 1024,
+        max_age_sec: Optional[float] = None,
+        overflow_policy: str = "reject",
+    ) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        pol_s, _b = _to_slice(overflow_policy.encode("utf-8"))
+        mb = 0 if max_bytes is None else int(max_bytes)
+        age = 0.0 if max_age_sec is None else float(max_age_sec)
+        rc = self._lib.po_target_queue_new(
+            int(max_messages), mb, age, pol_s, ctypes.byref(self._handle)
+        )
+        if rc != PO_OK:
+            raise ValueError(f"po_target_queue_new failed ({rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_target_queue_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def enqueue(
+        self,
+        topic: str,
+        payload: bytes,
+        kwargs: Optional[Dict[str, Any]] = None,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        t_s, _b1 = _to_slice(topic.encode("utf-8"))
+        p_s, _b2 = _to_slice(payload)
+        kw_bytes = json.dumps(kwargs or {}).encode("utf-8")
+        kw_s, _b3 = _to_slice(kw_bytes)
+        out = PoOwnedBuf()
+        rc = self._lib.po_target_queue_enqueue(
+            self._handle, t_s, p_s, kw_s, ts, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_target_queue_enqueue failed ({rc})")
+        res = json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+        res["expired"] = [_decode_queued_item(m) for m in res.get("expired", [])]
+        res["evicted"] = [_decode_queued_item(m) for m in res.get("evicted", [])]
+        return res
+
+    def drain(
+        self, limit: int = 1000, now_sec: Optional[float] = None
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        out = PoOwnedBuf()
+        rc = self._lib.po_target_queue_drain(
+            self._handle, int(limit), ts, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_target_queue_drain failed ({rc})")
+        res = json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+        res["messages"] = [_decode_queued_item(m) for m in res.get("messages", [])]
+        res["expired"] = [_decode_queued_item(m) for m in res.get("expired", [])]
+        return res
+
+    def stats(self) -> Dict[str, Any]:
+        out = PoOwnedBuf()
+        rc = self._lib.po_target_queue_stats(self._handle, ctypes.byref(out))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_target_queue_stats failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
+
+class NativeDiskStoreAndForward:
+    """FFI wrapper over `po_disk_store_t` (Phase 5 edge disk-backed store-and-forward)."""
+
+    def __init__(
+        self,
+        path: str,
+        size_cap_bytes: int = 64 * 1024 * 1024,
+        batch_max_messages: int = 32,
+        batch_max_bytes: int = 64 * 1024,
+        flush_interval_sec: float = 1.0,
+        overflow_policy: str = "drop_oldest",
+    ) -> None:
+        self._lib = get_libpostoffice()
+        self._handle = ctypes.c_void_p()
+        p_s, _b1 = _to_slice(str(path).encode("utf-8"))
+        pol_s, _b2 = _to_slice(overflow_policy.encode("utf-8"))
+        rc = self._lib.po_disk_store_open(
+            p_s,
+            int(size_cap_bytes),
+            int(batch_max_messages),
+            int(batch_max_bytes),
+            float(flush_interval_sec),
+            pol_s,
+            ctypes.byref(self._handle),
+        )
+        if rc != PO_OK:
+            raise ValueError(f"po_disk_store_open failed ({rc})")
+
+    def __del__(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle and handle.value:
+            self._lib.po_disk_store_free(handle)
+            self._handle = ctypes.c_void_p()
+
+    def append(
+        self,
+        topic: str,
+        payload: bytes,
+        kwargs: Optional[Dict[str, Any]] = None,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        ts = time.monotonic() if now_sec is None else float(now_sec)
+        t_s, _b1 = _to_slice(topic.encode("utf-8"))
+        p_s, _b2 = _to_slice(payload)
+        kw_bytes = json.dumps(kwargs or {}).encode("utf-8")
+        kw_s, _b3 = _to_slice(kw_bytes)
+        out = PoOwnedBuf()
+        rc = self._lib.po_disk_store_append(
+            self._handle, t_s, p_s, kw_s, ts, ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_disk_store_append failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
+    def flush(self) -> int:
+        count = ctypes.c_size_t(0)
+        rc = self._lib.po_disk_store_flush(self._handle, ctypes.byref(count))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_disk_store_flush failed ({rc})")
+        return int(count.value)
+
+    def drain(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        out = PoOwnedBuf()
+        rc = self._lib.po_disk_store_drain(
+            self._handle, int(limit), ctypes.byref(out)
+        )
+        if rc != PO_OK:
+            raise RuntimeError(f"po_disk_store_drain failed ({rc})")
+        items = json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+        return [_decode_queued_item(m) for m in items]
+
+    def stats(self) -> Dict[str, Any]:
+        out = PoOwnedBuf()
+        rc = self._lib.po_disk_store_stats(self._handle, ctypes.byref(out))
+        if rc != PO_OK:
+            raise RuntimeError(f"po_disk_store_stats failed ({rc})")
+        return json.loads(_consume_owned_buf(self._lib, out).decode("utf-8"))
+
 
 

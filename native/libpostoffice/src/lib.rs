@@ -10,6 +10,7 @@ pub mod engine;
 pub mod firewall;
 pub mod governor;
 pub mod json;
+pub mod queue;
 pub mod redis_sync;
 pub mod signing;
 pub mod trie;
@@ -26,6 +27,7 @@ use engine::{format_dlq_payload, BudgetedDlq, Engine};
 use firewall::{Action, Firewall, MessageContext};
 use governor::{detect_host_ram_bytes, MemoryGovernor};
 use json::{parse_json, JsonValue};
+use queue::{DiskStoreAndForward, TargetPublishQueue};
 use redis_sync::converge_from_redis;
 use signing::{validate_action_json, HmacSigner};
 use trie::TopicTrie;
@@ -88,6 +90,8 @@ pub struct PoSignerHandle(pub HmacSigner);
 pub struct PoDlqBudgetHandle(pub BudgetedDlq);
 pub struct PoEngineHandle(pub Engine);
 pub struct PoKafkaTrackerHandle(pub KafkaOffsetTracker);
+pub struct PoTargetQueueHandle(pub TargetPublishQueue);
+pub struct PoDiskStoreHandle(pub DiskStoreAndForward);
 
 pub struct PoClientHandle {
     pub endpoint_url: String,
@@ -1467,6 +1471,248 @@ pub unsafe extern "C" fn po_kafka_tracker_reset(
     };
     (*tracker).0.reset_partition(top, partition);
     PoStatus::Ok
+}
+
+// =========================================================================
+// Phase 5: Per-Target Bounded Queues & Edge Disk Store-and-Forward
+// =========================================================================
+
+#[no_mangle]
+pub unsafe extern "C" fn po_target_queue_new(
+    max_messages: usize,
+    max_bytes: usize,
+    max_age_sec: f64,
+    overflow_policy: PoSlice,
+    out_queue: *mut *mut PoTargetQueueHandle,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if out_queue.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let pol = match slice_to_str(overflow_policy) {
+            Ok(s) if !s.is_empty() => s,
+            _ => "reject",
+        };
+        let mb_opt = if max_bytes == 0 { None } else { Some(max_bytes) };
+        let age_opt = if max_age_sec <= 0.0 {
+            None
+        } else {
+            Some(max_age_sec)
+        };
+        match TargetPublishQueue::new(max_messages, mb_opt, age_opt, pol) {
+            Ok(q) => {
+                *out_queue = Box::into_raw(Box::new(PoTargetQueueHandle(q)));
+                PoStatus::Ok
+            }
+            Err(_) => PoStatus::ErrInvalidArgument,
+        }
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_target_queue_free(queue: *mut PoTargetQueueHandle) {
+    if !queue.is_null() {
+        let _ = Box::from_raw(queue);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_target_queue_enqueue(
+    queue: *mut PoTargetQueueHandle,
+    topic: PoSlice,
+    payload: PoSlice,
+    kwargs_json: PoSlice,
+    now_sec: f64,
+    out_result_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if queue.is_null() || out_result_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let top = match slice_to_str(topic) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let pay = match slice_to_bytes(payload) {
+            Ok(b) => b,
+            Err(e) => return e,
+        };
+        let kw = match slice_to_str(kwargs_json) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let res = (*queue).0.enqueue(top, pay, kw, now_sec);
+        write_owned_buf(out_result_json, res.to_json_string().into_bytes())
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_target_queue_drain(
+    queue: *mut PoTargetQueueHandle,
+    limit: usize,
+    now_sec: f64,
+    out_result_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if queue.is_null() || out_result_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let res = (*queue).0.drain(limit, now_sec);
+        write_owned_buf(out_result_json, res.to_json_string().into_bytes())
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_target_queue_stats(
+    queue: *const PoTargetQueueHandle,
+    out_stats_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if queue.is_null() || out_stats_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let res = (*queue).0.stats();
+        write_owned_buf(out_stats_json, res.to_json_string().into_bytes())
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_open(
+    path: PoSlice,
+    size_cap_bytes: usize,
+    batch_max_messages: usize,
+    batch_max_bytes: usize,
+    flush_interval_sec: f64,
+    overflow_policy: PoSlice,
+    out_store: *mut *mut PoDiskStoreHandle,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if out_store.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let p_str = match slice_to_str(path) {
+            Ok(s) if !s.is_empty() => s,
+            _ => return PoStatus::ErrInvalidArgument,
+        };
+        let pol = match slice_to_str(overflow_policy) {
+            Ok(s) if !s.is_empty() => s,
+            _ => "reject",
+        };
+        match DiskStoreAndForward::open(
+            p_str,
+            size_cap_bytes,
+            batch_max_messages,
+            batch_max_bytes,
+            flush_interval_sec,
+            pol,
+        ) {
+            Ok(store) => {
+                *out_store = Box::into_raw(Box::new(PoDiskStoreHandle(store)));
+                PoStatus::Ok
+            }
+            Err(_) => PoStatus::ErrInvalidArgument,
+        }
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_free(store: *mut PoDiskStoreHandle) {
+    if !store.is_null() {
+        let _ = Box::from_raw(store);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_append(
+    store: *mut PoDiskStoreHandle,
+    topic: PoSlice,
+    payload: PoSlice,
+    kwargs_json: PoSlice,
+    now_sec: f64,
+    out_result_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if store.is_null() || out_result_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let top = match slice_to_str(topic) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let pay = match slice_to_bytes(payload) {
+            Ok(b) => b,
+            Err(e) => return e,
+        };
+        let kw = match slice_to_str(kwargs_json) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        match (*store).0.append(top, pay, kw, now_sec) {
+            Ok(res) => write_owned_buf(out_result_json, res.to_json_string().into_bytes()),
+            Err(_) => PoStatus::ErrIo,
+        }
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_flush(
+    store: *mut PoDiskStoreHandle,
+    out_flushed_count: *mut usize,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if store.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        match (*store).0.flush() {
+            Ok(n) => {
+                if !out_flushed_count.is_null() {
+                    *out_flushed_count = n;
+                }
+                PoStatus::Ok
+            }
+            Err(_) => PoStatus::ErrIo,
+        }
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_drain(
+    store: *mut PoDiskStoreHandle,
+    limit: usize,
+    out_messages_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if store.is_null() || out_messages_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        match (*store).0.drain(limit) {
+            Ok(res) => write_owned_buf(out_messages_json, res.to_json_string().into_bytes()),
+            Err(_) => PoStatus::ErrIo,
+        }
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn po_disk_store_stats(
+    store: *const PoDiskStoreHandle,
+    out_stats_json: *mut PoOwnedBuf,
+) -> PoStatus {
+    catch_unwind(AssertUnwindSafe(|| {
+        if store.is_null() || out_stats_json.is_null() {
+            return PoStatus::ErrInvalidArgument;
+        }
+        let res = (*store).0.stats();
+        write_owned_buf(out_stats_json, res.to_json_string().into_bytes())
+    }))
+    .unwrap_or(PoStatus::ErrInternal)
 }
 
 #[cfg(test)]
