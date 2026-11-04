@@ -88,6 +88,7 @@ class DataPlane:
     signing_mode = "off"
     version_key = "postoffice:version"
     version_sigs_key = "postoffice:version_sigs"
+    stream_key = "postoffice:config_stream"
 
     def _init_limits(self, max_event_bytes: Optional[int] = None, event_rate: Optional[float] = None,
                      event_burst: Optional[float] = None, allowed_actions: Optional[Set[str]] = None,
@@ -433,6 +434,34 @@ class DataPlane:
         self._next_resync_at = now + self._resync_backoff.next()
         logger.info("Resyncing state from Control Plane...")
         self.sync_state()
+
+    def replay_stream(self, after_version: Optional[int] = None) -> int:
+        """Replays ordered events from the Redis Stream (`postoffice:config_stream`) with version > after_version."""
+        baseline = self._version if after_version is None else after_version
+        try:
+            entries = self.r.xrange(self.stream_key, "-", "+")
+        except Exception as e:
+            logger.warning(f"Failed to read Redis stream {self.stream_key}: {e}")
+            return 0
+        replayed = 0
+        for _entry_id, fields in entries or []:
+            if not isinstance(fields, dict):
+                continue
+            raw_ver = fields.get("version")
+            raw_payload = fields.get("payload")
+            if raw_payload is None:
+                continue
+            if baseline is not None and raw_ver is not None:
+                try:
+                    if int(raw_ver) <= int(baseline):
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            prev_ver = self._version
+            self._process_update_message({"type": "message", "data": raw_payload})
+            if self._version != prev_ver:
+                replayed += 1
+        return replayed
 
     def _resync_due(self) -> bool:
         return self._clock() >= self._next_resync_at

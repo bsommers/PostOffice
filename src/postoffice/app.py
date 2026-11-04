@@ -26,6 +26,7 @@ class PostOffice:
         on_unroutable: str = "nack",
         max_routes_per_topic: Optional[int] = 100,
         metrics_addr: str = "127.0.0.1",
+        use_native_engine: Optional[bool] = None,
     ):
         self.metrics_addr = metrics_addr
         self.max_routes_per_topic = max_routes_per_topic
@@ -43,8 +44,14 @@ class PostOffice:
         self.schema_registry = self.router.schema_registry
         self.dlq_broker = dlq_broker
         self.dlq_topic = dlq_topic
+        self.native_engine: Optional[Any] = None
+        if use_native_engine:
+            from postoffice.native import NativeEngine
+
+            self.native_engine = NativeEngine()
+            self.native_engine.set_unroutable_policy(on_unroutable)
         if dlq_broker and dlq_topic:
-            self.router.set_dlq(dlq_broker, dlq_topic)
+            self.set_dlq(dlq_broker, dlq_topic)
 
     def register_schema(self, name: str, definition: Any, schema_type: str = "AVRO") -> int:
         """Registers a schema into the PostOffice schema registry."""
@@ -63,17 +70,23 @@ class PostOffice:
         self.dlq_broker = broker_name
         self.dlq_topic = topic
         self.router.set_dlq(broker_name, topic)
+        if self.native_engine is not None:
+            self.native_engine.set_dlq(broker_name, topic)
 
     def set_unroutable_policy(self, policy: str, broker: Optional[str] = None) -> None:
         """Sets what happens to messages matching no route: 'nack' (default), 'dlq' or 'drop'."""
         self.router.set_unroutable_policy(policy, broker=broker)
         if broker is None:
             self.on_unroutable = policy
+        if self.native_engine is not None:
+            self.native_engine.set_unroutable_policy(policy, broker=broker)
 
     def set_dlq_budget(self, **limits) -> None:
         """Limits DLQ writes (max_message_bytes, msgs_per_sec, bytes_per_sec) per source broker."""
         self.dlq_budget = BudgetedDlq(**limits)
         self.router.set_dlq_budget(self.dlq_budget)
+        if self.native_engine is not None:
+            self.native_engine.apply_action("set_dlq_budget", dict(limits))
 
     def sender_report(self, top: int = 10) -> List[Dict[str, Any]]:
         """Noisiest senders seen by the ingress ledger (empty when no ledger is configured)."""
@@ -85,6 +98,8 @@ class PostOffice:
         self.firewall = Firewall.from_dict(config) if isinstance(config, dict) else config
         self.router.set_firewall(self.firewall)
         if isinstance(config, dict):
+            if self.native_engine is not None:
+                self.native_engine.set_ingress(config)
             for broker, limit in config.get("inflight", {}).items():
                 self.set_inflight_limit(broker, **limit)
 
@@ -165,6 +180,8 @@ class PostOffice:
         client = ClientRegistry.create_client(protocol, name, self.router, **kwargs)
         self.router.register_client(client)
         self.brokers[name] = client
+        if self.native_engine is not None:
+            self.native_engine.register_broker(name, protocol)
 
         if circuit_breaker_threshold is not None:
             self.router.configure_circuit_breaker(
@@ -207,6 +224,33 @@ class PostOffice:
             target_client=target_broker,
             target_topic=target_topic,
             **target_kwargs
+        )
+        if self.native_engine is not None:
+            self.native_engine.add_route(
+                source_broker=source_broker,
+                source_topic=source_topic,
+                target_broker=target_broker,
+                target_topic=target_topic,
+                target_kwargs=target_kwargs,
+            )
+
+    def route_native(
+        self,
+        source_broker: str,
+        source_topic: str,
+        payload: bytes,
+        source_kwargs: Optional[Dict[str, Any]] = None,
+        now_sec: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Routes a message through the attached `NativeEngine` (`use_native_engine=True`)."""
+        if self.native_engine is None:
+            raise RuntimeError("NativeEngine is not enabled on this PostOffice instance (pass use_native_engine=True).")
+        return self.native_engine.route(
+            source_broker=source_broker,
+            source_topic=source_topic,
+            payload=payload,
+            source_kwargs=source_kwargs,
+            now_sec=now_sec,
         )
 
     def subscribe(self, broker_name: str, topic: str, **kwargs) -> None:

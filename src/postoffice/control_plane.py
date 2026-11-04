@@ -1,4 +1,5 @@
 import json
+import os
 import redis
 import logging
 from typing import Any, Dict, Optional
@@ -14,15 +15,19 @@ class ControlPlane:
     """
     signer: Optional[HmacSigner] = None   # class default: planes built without __init__ stay unsigned
     include_schema_version: bool = False
+    use_streams: bool = False
     EVENT_SCHEMA_VERSION = 1
     version_key = "postoffice:version"
     version_sigs_key = "postoffice:version_sigs"
+    stream_key = "postoffice:config_stream"
     VERSION_SIG_RETENTION = 1000
+    STREAM_MAXLEN = 1000
 
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379,
                  redis_password: Optional[str] = None, redis_tls: bool = False,
                  signer: Optional[HmacSigner] = None,
-                 include_schema_version: bool = False):
+                 include_schema_version: bool = False,
+                 use_streams: Optional[bool] = None):
         self.r = redis.Redis(
             host=redis_host, port=redis_port, password=redis_password, ssl=redis_tls,
             decode_responses=True,
@@ -31,6 +36,10 @@ class ControlPlane:
         # Explicit signer wins; otherwise POSTOFFICE_EVENT_KEYS (None = unsigned legacy wire format).
         self.signer = signer if signer is not None else HmacSigner.from_env()
         self.include_schema_version = include_schema_version
+        self.use_streams = (
+            os.environ.get("POSTOFFICE_REDIS_STREAMS", "0").strip().lower() in ("1", "true", "yes")
+            if use_streams is None else bool(use_streams)
+        )
 
     def _publish_update(self, action: str, data: dict):
         # State is already written; bump the version, then announce it so workers can detect gaps.
@@ -46,6 +55,13 @@ class ControlPlane:
         else:
             payload = body
         self.r.publish(self.channel, payload)
+        if self.use_streams:
+            self.r.xadd(
+                self.stream_key,
+                {"version": str(version), "payload": payload},
+                maxlen=self.STREAM_MAXLEN,
+                approximate=True,
+            )
         # Log only the action and entity name: payloads can carry credentials (security_config).
         logger.info(f"Published update: {action} ({data.get('name') or data.get('broker_name') or data.get('source_broker') or '-'})")
 

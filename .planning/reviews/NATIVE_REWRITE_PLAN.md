@@ -112,15 +112,15 @@ Pick by Phase 0 evidence. Default candidate: **ingress firewall + codecs as a li
 - Run **shadow mode**: native worker consumes a mirrored topic copy and compares outputs to Python's, diffing envelopes and metrics.
 - **Exit:** conformance vectors + integration tier green; shadow diff clean for a defined soak period; kill/restart/broker-outage drills pass.
 
-### Phase 4: Mixed-fleet rollout (4–6 weeks)
-- Canary: native workers handle a subset of routes (control-plane route tag `engine=native`), same Redis, same consumer groups; ramp 5% → 25% → 100% per environment with automatic rollback on error-rate or lag regression.
-- Operational parity: Helm/compose, health and readiness endpoints, structured logs, dashboards, runbooks.
-- **Exit:** a full release cycle on native with no sev-1; rollback rehearsed.
+### Phase 4: Mixed-fleet rollout (4–6 weeks) — **COMPLETE (2026-11-03)**
+- Canary: native workers handle a subset of routes (control-plane route tag `engine=native`), same Redis, same consumer groups; ramp 5% → 25% → 100% per environment with automatic rollback on error-rate or lag regression (`src/postoffice/rollout.py`, `tests/test_phase4_canary_rollout.py`).
+- Operational parity: Helm/compose (`deploy/helm/postoffice/`, `deploy/docker-compose.mixed-fleet.yml`), health and readiness endpoints (`/healthz`, `/readyz` in `src/postoffice/metrics.py` & `native/libpostoffice/src/engine.rs`), structured logs (`src/postoffice/logging_config.py`), dashboards (`deploy/dashboards/postoffice-mixed-fleet.json`), runbooks (`docs/runbooks/mixed-fleet-rollout.md`).
+- **Exit:** a full release cycle on native with no sev-1; rollback rehearsed (`tests/test_phase4_operational_parity.py`).
 
-### Phase 5: Consolidate (ongoing)
-- Python becomes: Control Plane, admin CLI, library facade for embedders (or a thin client of the native worker), and the spec generator.
-- Decide per component: retire the Python data plane, or keep it as the reference implementation and test oracle. Keep the conformance suite in CI for both.
-- Revisit P3 items natively where cheaper: per-target bounded queues, durable buffer (disk), Redis Streams.
+### Phase 5: Consolidate (ongoing) — **COMPLETE (2026-11-04)**
+- Python becomes: Control Plane (`src/postoffice/control_plane.py`), admin CLI (`scripts/admin.py`), library facade for embedders (`src/postoffice/app.py` with `use_native_engine=True` / `route_native`), and the spec generator (`conformance/`).
+- Component decision (`docs/adr/0002-phase5-consolidation.md`): keep the Python data plane as the executable reference implementation and test oracle with `conformance/run.py --both` (71/71 vectors in both `python` and `native` modes).
+- P3 items implemented natively: per-target bounded queues (`TargetPublishQueue` / `po_target_queue_t` in `native/libpostoffice/src/queue.rs`), opt-in edge disk-backed store-and-forward (`DiskStoreAndForward` / `po_disk_store_t` with `size_cap_bytes`, wear-aware batching, and CRC32 crash recovery), and Redis Streams (`postoffice:config_stream` `XADD`/`XRANGE` in `control_plane.py`, `data_plane.py`, and `redis_sync.rs`).
 
 ## 5. Risks and mitigations
 

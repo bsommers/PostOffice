@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-10-18)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Native Rewrite Phase 4 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 4: Mixed-fleet rollout with control-plane `engine=native|python|all|canary` route tagging, `CanaryRolloutController` `5% -> 25% -> 100%` ramp and automatic rollback in `src/postoffice/rollout.py`, HTTP `/healthz` and `/readyz` probe parity in `src/postoffice/metrics.py`, structured JSON logging in `src/postoffice/logging_config.py`, and deployment/dashboard/runbook artifacts in `deploy/` and `docs/runbooks/mixed-fleet-rollout.md`; 580/580 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
+**Current focus:** Native Rewrite Phases 0–5 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 5: Consolidate — native per-target bounded queues `TargetPublishQueue` and opt-in disk-backed store-and-forward `DiskStoreAndForward` with wear-aware batching & CRC32 crash recovery in `native/libpostoffice/src/queue.rs`, Redis Streams `postoffice:config_stream` event log publishing & replay across Python and Rust, `PostOffice(..., use_native_engine=True)` facade consolidation, and ADR 0002 in `docs/adr/0002-phase5-consolidation.md`; 586/586 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
 
 ## Current Position
 
-Phase: Native Rewrite Phase 4 (Mixed-fleet rollout, canary controller, and operational parity) — Complete
-Plan: 2 of 2 quick slices in Phase 4 completed (`261103-p4a`, `261103-p4b`)
-Status: Phases 0, 1, 2, 3, and 4 complete; 580 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-03a.md`
-Last activity: 2026-11-03 — Completed Native Rewrite Phase 4 (`src/postoffice/rollout.py`, `src/postoffice/logging_config.py`, `src/postoffice/metrics.py`, `deploy/`, `docs/runbooks/mixed-fleet-rollout.md`, `tests/test_phase4_*.py`)
+Phase: Native Rewrite Phase 5 (Consolidate: native queues, edge disk store-and-forward, Redis Streams, and facade/oracle consolidation) — Complete
+Plan: 2 of 2 quick slices in Phase 5 completed (`261103-p5a`, `261103-p5b`)
+Status: All Native Rewrite Phases (0, 1, 2, 3, 4, and 5) complete; 586 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-04a.md`
+Last activity: 2026-11-04 — Completed Native Rewrite Phase 5 (`native/libpostoffice/src/queue.rs`, `native/libpostoffice/src/redis_sync.rs`, `src/postoffice/base_client.py`, `src/postoffice/control_plane.py`, `src/postoffice/data_plane.py`, `src/postoffice/app.py`, `docs/adr/0002-phase5-consolidation.md`, `tests/test_phase5_*.py`)
 
 Progress: [██████████] 100%
 

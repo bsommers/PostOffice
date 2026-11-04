@@ -142,6 +142,36 @@ impl RespConn {
             other => Err(format!("Unexpected HGETALL response: {other:?}")),
         }
     }
+
+    pub fn xrange_payloads(&mut self, stream_key: &str) -> Result<Vec<String>, String> {
+        self.send_command(&["XRANGE", stream_key, "-", "+"])?;
+        match self.read_value()? {
+            RespValue::Array(entries) => {
+                let mut payloads = Vec::new();
+                for entry in entries {
+                    if let RespValue::Array(parts) = entry {
+                        if parts.len() >= 2 {
+                            if let RespValue::Array(kv) = &parts[1] {
+                                for pair in kv.chunks_exact(2) {
+                                    if let (
+                                        RespValue::BulkString(Some(k)),
+                                        RespValue::BulkString(Some(v)),
+                                    ) = (&pair[0], &pair[1])
+                                    {
+                                        if k == "payload" {
+                                            payloads.push(v.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(payloads)
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
 }
 
 /// Execute T7 subscribe-before-snapshot state convergence against a Redis server.
@@ -237,6 +267,13 @@ pub fn converge_from_redis(
     }
 
     state.applied_version = Some(snapshot_version);
+
+    // 2b. Replay any Redis Stream (`postoffice:config_stream`) entries newer than snapshot_version
+    if let Ok(stream_payloads) = snap.xrange_payloads("postoffice:config_stream") {
+        for ev in stream_payloads {
+            state.apply_control_event(&ev, now_sec);
+        }
+    }
 
     // 3. Drain any events published to the pubsub socket while the snapshot was read
     pubsub.set_read_timeout(Some(30));
