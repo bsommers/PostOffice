@@ -60,9 +60,10 @@ PostOffice is a high-throughput, multi-protocol messaging system and semantic tr
    ```
 
 3. **Verify installation via hermetic test suite & coverage gate:**
-   All 106 unit tests mock network clients offline and run in ~0.4s without requiring Docker:
+   All 586 Python unit tests mock network clients offline and run hermetically without requiring Docker:
    ```bash
    PYTHONPATH=src .venv/bin/coverage run -m unittest discover tests/ && .venv/bin/coverage report
+   PYTHONPATH=src .venv/bin/python conformance/run.py --both
    ```
 
 ---
@@ -175,25 +176,42 @@ Detailed walkthroughs and recipes for each major capability:
 ```python
 PostOffice(
     metrics_port: Optional[int] = None,
+    metrics_host: str = "127.0.0.1",
     dlq_broker: Optional[str] = None,
     dlq_topic: Optional[str] = None,
-    schema_registry: Optional[BaseSchemaRegistry] = None
+    schema_registry: Optional[BaseSchemaRegistry] = None,
+    on_unroutable: str = "nack",
+    dlq_rate_per_sec: Optional[float] = 100.0,
+    dlq_burst: Optional[float] = 200.0,
+    max_routes_per_message: int = 32,
+    max_redeliveries: int = 5,
+    use_native_engine: Optional[bool] = None,
 )
 ```
-- `metrics_port`: TCP port to run Prometheus HTTP `/metrics` scrape server. If `None`, HTTP server is disabled.
+- `metrics_port`: TCP port to run Prometheus HTTP `/metrics`, `/healthz`, and `/readyz` server. If `None`, HTTP server is disabled.
+- `metrics_host`: Bind address for the metrics server (defaults to `"127.0.0.1"`).
 - `dlq_broker`: Default broker identifier to receive failed or unroutable messages.
 - `dlq_topic`: Default topic/queue identifier for dead letter messages.
 - `schema_registry`: Custom `BaseSchemaRegistry` instance. Defaults to `InMemorySchemaRegistry()`.
+- `on_unroutable`: Disposition for messages matching zero routes (`"nack"`, `"drop"`, or `"dlq"`).
+- `dlq_rate_per_sec` / `dlq_burst`: Token-bucket rate limit parameters for `BudgetedDlq`.
+- `max_routes_per_message`: Fan-out cap per ingress message.
+- `max_redeliveries`: Maximum poison-message redeliveries before terminal drop/DLQ (`RetryLimiter`).
+- `use_native_engine`: Enables in-process Rust `NativeEngine` (`libpostoffice`) when `True` or when `POSTOFFICE_NATIVE_ENGINE=1` is set.
 
 #### Methods
 - `add_broker(name: str, protocol: str, security_config: Optional[Union[SecurityConfig, dict]] = None, circuit_breaker_threshold: Optional[int] = None, circuit_breaker_timeout: float = 30.0, **kwargs) -> None`
-  Registers a messaging broker with optional TLS/mTLS or SASL security settings, client publish buffer kwargs (`enable_publish_buffer`, `max_publish_buffer_size`, `buffer_overflow_policy`), and egress circuit breaker parameters. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
+  Registers a messaging broker with optional TLS/mTLS or SASL security settings, client publish buffer kwargs (`enable_publish_buffer`, `max_publish_buffer_size`, `max_publish_buffer_bytes`, `max_publish_buffer_age`, `buffer_overflow_policy`, `disk_store_path`), and egress circuit breaker parameters. Protocol must be `'mqtt'`, `'amqp'`, `'kafka'`, or `'nanomq'`.
 - `configure_circuit_breaker(broker_name: str, failure_threshold: int = 5, recovery_timeout: float = 30.0) -> CircuitBreaker`
   Configures or updates an egress `CircuitBreaker` for a registered target broker.
 - `reload_broker_security(broker_name: str, security_config: Union[SecurityConfig, dict]) -> None`
   Hot-reloads TLS/mTLS certificates or SASL credentials on a registered broker in-flight without losing subscriptions or buffered messages.
 - `add_route(source_broker: str, source_topic: str, target_broker: str, target_topic: str, **target_kwargs) -> None`
   Configures a routing rule with optional protocol parameters and schema transformations.
+- `configure_ingress(config: dict) -> None`
+  Configures the pre-routing `IngressFirewall`, `ContentGuard`, `SenderLedger`, and `InFlightGate` from a declarative dictionary.
+- `route_native(source_broker: str, topic: str, payload: Union[bytes, str], sender_id: Optional[str] = None, qos: int = 0, delivery_mode: int = 1, redelivered: bool = False, now_sec: Optional[float] = None) -> dict`
+  Evaluates a message synchronously through the Rust `NativeEngine` (`libpostoffice`) and returns the structured routing outcome.
 - `subscribe(broker_name: str, topic: str, **kwargs) -> None`
   Subscribes a registered broker to a topic (preserving `kwargs` across reconnects).
 - `register_schema(name: str, definition: Any, schema_type: str = "AVRO") -> int`

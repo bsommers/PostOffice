@@ -29,6 +29,8 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **RES-01**: Standardized offline subscription queuing and thread-safe in-flight publish buffers across all adapters (`MqttClient`, `NanoMqClient`, `AmqpClient`, `KafkaClient`) — v2.1
 - [x] **RES-02**: Egress backpressure, bounded ring-buffer failover, and per-broker circuit breaker protection before DLQ drop — v2.1
 - [x] **RES-03**: Dynamic in-flight TLS certificate and credential hot-reload without worker process restart — v2.1
+- [x] **DOS-01 (`D1`–`D11`)**: Pre-routing `IngressFirewall`, `ContentGuard`, `SenderLedger`, `InFlightGate`, `RetryLimiter`, `BudgetedDlq`, `MemoryGovernor`, and HMAC-SHA256 Control Plane signing — v3.0
+- [x] **NAT-01 (Phases 0–5)**: Hybrid Rust `libpostoffice` C ABI & `NativeEngine` (`native/libpostoffice/`), 71-vector polyglot conformance suite (`conformance/run.py --both`), shadow mode (`ShadowModeRunner`), mixed-fleet canary rollout (`CanaryRolloutController`), native bounded queues (`TargetPublishQueue`), opt-in edge disk store-and-forward (`DiskStoreAndForward`), and Redis Streams (`postoffice:config_stream`) replay — v3.0
 
 ### Future Considerations (v3.0 Candidates)
 

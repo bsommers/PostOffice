@@ -8,25 +8,25 @@ progress:
   completed_plans: 16
   percent: 100
 milestone:
-  name: v2.1 Operational Resiliency & In-Flight Queuing
-  active_phase: 08-backpressure-circuit-breakers-hot-reload
+  name: v3.0 Native Rust Core, DoS Protection & Mixed-Fleet Rollout
+  active_phase: phase-5-consolidate
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-10-18)
+See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Native Rewrite Phases 0–5 complete (`NATIVE_REWRITE_PLAN.md` §4 Phase 5: Consolidate — native per-target bounded queues `TargetPublishQueue` and opt-in disk-backed store-and-forward `DiskStoreAndForward` with wear-aware batching & CRC32 crash recovery in `native/libpostoffice/src/queue.rs`, Redis Streams `postoffice:config_stream` event log publishing & replay across Python and Rust, `PostOffice(..., use_native_engine=True)` facade consolidation, and ADR 0002 in `docs/adr/0002-phase5-consolidation.md`; 586/586 unit tests passing; 71/71 conformance vectors passing in both Python and Native modes).
+**Current focus:** Milestone `v3.0.0` shipped — All Native Rewrite Phases (0–5) and Architecture/DoS Remediation (`P0`–`P3`, `D1`–`D11`) complete, documented, and verified (`586` Python unit tests + `7` Rust unit/fuzz tests + `71/71` dual-engine conformance vectors passing; `92%` combined branch + statement coverage).
 
 ## Current Position
 
-Phase: Native Rewrite Phase 5 (Consolidate: native queues, edge disk store-and-forward, Redis Streams, and facade/oracle consolidation) — Complete
-Plan: 2 of 2 quick slices in Phase 5 completed (`261103-p5a`, `261103-p5b`)
-Status: All Native Rewrite Phases (0, 1, 2, 3, 4, and 5) complete; 586 Python unit tests + 7 Rust unit/fuzz tests passing (>= 90% combined branch+statement coverage); Session checkpoint saved to `.claude/checkpoints/checkpoint-2026-11-04a.md`
-Last activity: 2026-11-04 — Completed Native Rewrite Phase 5 (`native/libpostoffice/src/queue.rs`, `native/libpostoffice/src/redis_sync.rs`, `src/postoffice/base_client.py`, `src/postoffice/control_plane.py`, `src/postoffice/data_plane.py`, `src/postoffice/app.py`, `docs/adr/0002-phase5-consolidation.md`, `tests/test_phase5_*.py`)
+Phase: Milestone v3.0 Release & Documentation Synchronization — Complete
+Plan: All phases (0..5) and release documentation synchronized
+Status: Milestone v3.0 complete (`586` Python tests, `7` Rust tests, `71/71` conformance vectors in `--both` mode, `92%` coverage)
+Last activity: 2026-11-05 — Synchronized `CHANGELOG.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/TEST_COVERAGE.md`, `docs/USER_GUIDE.md`, `docs/user-guide/README.md`, `.planning/ROADMAP.md`, `.planning/PROJECT.md`, and bumped version to `3.0.0`
 
 Progress: [██████████] 100%
 
