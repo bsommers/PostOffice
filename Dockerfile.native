@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+# PostOffice Edge Native Container Image (Dockerfile.native)
+# Multi-stage build producing minimal postoffice-worker & libpostoffice.so
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build Stage
+# ------------------------------------------------------------------------------
+FROM rust:1.82-bookworm AS builder
+
+WORKDIR /build
+
+# Copy native crate sources
+COPY native/libpostoffice /build/native/libpostoffice
+
+# Build native core in edge profile (no server codecs: pure MQTT/NanoMQ, minimal footprint)
+WORKDIR /build/native/libpostoffice
+RUN cargo build --release --no-default-features --features edge && \
+    strip /build/native/libpostoffice/target/release/postoffice-worker && \
+    strip /build/native/libpostoffice/target/release/libpostoffice.so
+
+# ------------------------------------------------------------------------------
+# Stage 2: Runtime Stage
+# ------------------------------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+
+# Install minimal runtime dependencies for container healthchecks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create unprivileged postoffice system user & group (UID/GID 10001)
+RUN groupadd -g 10001 postoffice && \
+    useradd -u 10001 -g postoffice -m -s /bin/sh postoffice
+
+# Create state directory for opt-in DiskStoreAndForward with strict permissions
+RUN mkdir -p /var/lib/postoffice && \
+    chown -R postoffice:postoffice /var/lib/postoffice && \
+    chmod 0750 /var/lib/postoffice
+
+# Copy compiled native binaries and shared libraries from builder
+COPY --from=builder /build/native/libpostoffice/target/release/postoffice-worker /usr/local/bin/postoffice-worker
+COPY --from=builder /build/native/libpostoffice/target/release/libpostoffice.so /usr/local/lib/libpostoffice.so
+
+RUN ldconfig
+
+# Opt-in disk storage volume for store-and-forward edge queue
+VOLUME ["/var/lib/postoffice"]
+
+# Switch to unprivileged runtime user
+USER postoffice
+
+# Expose metrics & healthcheck HTTP endpoint
+EXPOSE 9100
+
+# Healthcheck probing /healthz
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:9100/healthz || exit 1
+
+ENTRYPOINT ["/usr/local/bin/postoffice-worker"]

@@ -1,0 +1,50 @@
+{
+  "profile": "edge",
+  "created_at": "2026-11-06T18:44:52Z",
+  "all_gates_passed": true,
+  "idle_rss_mb": 14.0,
+  "loaded_rss_mb": 34.34,
+  "throughput_msg_per_sec": 15522.9,
+  "binary_sizes": {
+    "worker_binary_bytes": 700472,
+    "worker_binary_kb": 684.1,
+    "worker_binary_stripped_bytes": 602776,
+    "worker_binary_stripped_kb": 588.6,
+    "libpostoffice_so_bytes": 1052744,
+    "libpostoffice_so_kb": 1028.1,
+    "libpostoffice_so_stripped_bytes": 897560,
+    "libpostoffice_so_stripped_kb": 876.5
+  },
+  "idle_sync": {
+    "idle_rss_bytes": 14680064,
+    "idle_rss_mb": 14.0,
+    "idle_rss_limit_mb": 64.0,
+    "passed": true,
+    "applied_version": 1,
+    "cli_output": {
+      "applied_version": 1,
+      "active_brokers": 2,
+      "active_routes": 1,
+      "active_subscriptions": 1
+    }
+  },
+  "loaded_workload": {
+    "messages_processed": 2500,
+    "payload_bytes": 1024,
+    "duration_sec": 0.1611,
+    "throughput_msg_per_sec": 15522.9,
+    "loaded_rss_bytes": 36012032,
+    "loaded_rss_mb": 34.34,
+    "vm_rss_kb": 35168,
+    "vm_hwm_kb": 35168,
+    "loaded_rss_limit_mb": 128.0,
+    "throughput_target_msg_per_sec": 1000.0,
+    "passed": true
+  },
+  "gates": {
+    "idle_rss_gate": true,
+    "loaded_rss_gate": true,
+    "throughput_gate": true,
+    "all_gates_passed": true
+  }
+}
