@@ -1,0 +1,9 @@
+{
+  "name": "@postoffice/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "postoffice.mjs",
+  "scripts": {
+    "test": "node test.mjs"
+  }
+}

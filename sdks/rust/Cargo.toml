@@ -1,0 +1,8 @@
+[package]
+name = "postoffice-sdk"
+version = "3.0.0"
+edition = "2021"
+description = "PostOffice Native Client SDK for Rust"
+
+[dependencies]
+postoffice = { path = "../../native/libpostoffice" }
