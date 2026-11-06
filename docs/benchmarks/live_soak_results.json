@@ -1,0 +1,66 @@
+{
+  "mode": "live",
+  "timestamp": "2026-11-06T19:28:51Z",
+  "target": "127.0.0.1:16379",
+  "integration_suite": {
+    "test_redis_convergence": "PASS",
+    "test_live_broker_soak": "PASS"
+  },
+  "convergence": {
+    "version": 7,
+    "python_dataplane_synced": true,
+    "native_engine_synced": true,
+    "stream_replayed_count": 1
+  },
+  "shadow_soak": {
+    "total_messages": 5000,
+    "divergences": 0,
+    "clean": true
+  },
+  "canary_rollout": {
+    "stages_tested": [
+      5,
+      25,
+      100
+    ],
+    "promoted_stages": [
+      5,
+      25,
+      100
+    ],
+    "simulated_breach_rollback": true,
+    "final_native_percentage": 0,
+    "status": "rolled_back",
+    "rollback_reason": "error_rate_regression: 0.0500 > 0.0100"
+  },
+  "performance": {
+    "python": {
+      "message_count": 5000,
+      "throughput_msg_per_sec": 48808.84,
+      "elapsed_sec": 0.1024,
+      "latency_us": {
+        "p50": 15.47,
+        "p95": 38.92,
+        "p99": 60.4,
+        "p99_9": 229.47
+      }
+    },
+    "native": {
+      "message_count": 5000,
+      "throughput_msg_per_sec": 84422.15,
+      "elapsed_sec": 0.0592,
+      "latency_us": {
+        "p50": 11.41,
+        "p95": 14.91,
+        "p99": 21.11,
+        "p99_9": 124.32
+      }
+    },
+    "speedup": {
+      "throughput": 1.73,
+      "p50_reduction": 1.36,
+      "p99_reduction": 2.86,
+      "p99_9_reduction": 1.85
+    }
+  }
+}

@@ -126,4 +126,36 @@ Measured across `native/libpostoffice` (`libpostoffice.so` / `libpostoffice.a`) 
 | `Firewall.evaluate` | `rules=5 + ContentGuard` (JSON scan + parse) | 19,230 | **2,270.1** | 440,509 | **8.5x** |
 | `Firewall.evaluate` | `rules=5 + SenderLedger` | 3,600 | **319.0** | 3,134,374 | **11.3x** |
 
+---
+
+## 7. Phase 3–5 Live Containerized Redis Convergence & Mixed-Fleet Soak (`scripts/run_live_soak.py --live`)
+
+Executed against a live `redis:7.2-alpine` container (`127.0.0.1:16379`) with full `test_redis_convergence` + `test_live_broker_soak` integration suites, `postoffice:config_stream` (`XADD`/`XRANGE`) stream replay, `CanaryRolloutController` (`5% -> 25% -> 100%` + automatic SLO-breach rollback), and a 5,000-message mixed-protocol (JSON/Avro/Protobuf/DLQ/Firewall/Canary) differential soak (`docs/benchmarks/live_soak_results.json`):
+
+| Metric | Python Data Plane (`Router`) | Native Rust Engine (`NativeEngine` via FFI) | Improvement / Result |
+|---|---:|---:|---:|
+| **Live Integration Suites** (`test_redis_convergence`, `test_live_broker_soak`) | `PASS` | `PASS` | 100% pass |
+| **Shadow Mode Parity (`5,000` mixed messages)** | Reference | Shadow | **`0` divergences (`clean=true`)** |
+| **Canary Progression (`5% -> 25% -> 100%` + Rollback)** | Synced | Synced | Promoted `[5, 25, 100]`, rolled back to `0%` on simulated 5% error spike |
+| **Mixed-Workload Throughput** (`msg/s`, incl. Avro/Protobuf/DLQ) | 48,808.84 | **84,422.15** | **1.73x** (across Python `ctypes` FFI) |
+| **Latency `p50`** (`µs`) | 15.47 | **11.41** | **1.36x lower** |
+| **Latency `p95`** (`µs`) | 38.92 | **14.91** | **2.61x lower** |
+| **Latency `p99`** (`µs`) | 60.40 | **21.11** | **2.86x lower** |
+| **Latency `p99.9`** (`µs`) | 229.47 | **124.32** | **1.85x lower** |
+
+---
+
+## 8. Edge Profile Binary & RSS Verification (`scripts/verify_edge_profile.py`)
+
+Measured on `cargo build --release --no-default-features --features edge` (`docs/benchmarks/edge_profile_report.json`):
+
+| Metric | Measured Value | SLO Gate (`NATIVE_REWRITE_PLAN.md` §3.4 / §7) | Status |
+|---|---:|---:|---|
+| **`postoffice-worker` Binary Size (stripped)** | **588.6 KB** (`602,776` B) | `< 15 MB` static/minimal binary | **PASS** |
+| **`libpostoffice.so` Shared Library (stripped)** | **876.5 KB** (`897,560` B) | `< 15 MB` | **PASS** |
+| **Idle / Redis Sync Peak RSS** | **14.00 MB** (`14,680,064` B) | `< 64.0 MB` | **PASS** |
+| **Loaded Workload RSS (`1 KB` payload + `DiskStoreAndForward`)** | **34.34 MB** (`36,012,032` B) | `< 128.0 MB` | **PASS** |
+| **Edge Single-Core Throughput (`1 KB` payload + CRC32 store)** | **15,522.9 msg/s** | `>= 1,000.0 msg/s` | **PASS** |
+
+
 
