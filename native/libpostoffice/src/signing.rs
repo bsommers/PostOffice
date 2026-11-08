@@ -365,6 +365,23 @@ fn check_broker_kwargs(protocol: &str, kwargs: &[(String, JsonValue)]) -> Result
             ("bootstrap_servers", "str"),
             ("security_config", "dict"),
         ],
+        "http" | "webhook" => &[
+            ("url", "str"),
+            ("listen_host", "str"),
+            ("listen_port", "int"),
+            ("timeout", "float"),
+            ("bearer_token", "str"),
+            ("verify_tls", "bool"),
+            ("security_config", "dict"),
+        ],
+        "websocket" => &[
+            ("host", "str"),
+            ("port", "int"),
+            ("path", "str"),
+            ("timeout", "float"),
+            ("bearer_token", "str"),
+            ("security_config", "dict"),
+        ],
         _ => return Err("protocol is not a registered plugin".to_string()),
     };
 
@@ -465,6 +482,9 @@ pub fn validate_action_json(action: &str, data: &JsonValue) -> Result<(), String
                     if !matches!(eng, "all" | "python" | "native" | "canary") {
                         return Err("route engine must be one of all, python, native, canary".to_string());
                     }
+                }
+                if k == "filter" && !matches!(v, JsonValue::Null) {
+                    crate::engine::validate_filter_json(v, 8)?;
                 }
             }
             if let Some(eng_val) = data.get("engine") {

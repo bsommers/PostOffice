@@ -19,14 +19,14 @@ milestone:
 See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Milestone `v3.0.0` shipped — All Native Rewrite Phases (0–5) and Architecture/DoS Remediation (`P0`–`P3`, `D1`–`D11`) complete, documented, and verified (`586` Python unit tests + `7` Rust unit/fuzz tests + `71/71` dual-engine conformance vectors passing; `92%` combined branch + statement coverage).
+**Current focus:** Milestone `v3.0.0` + Post-`v3.0` Tracks 1–4 (`SDK-01`, `EDGE-01`, `INT-01`, `FLT-01`, `ADPT-01`) complete, documented, and verified (`616` Python unit tests + `8` Rust unit/fuzz tests + `71/71` dual-engine conformance vectors passing).
 
 ## Current Position
 
-Phase: Milestone v3.0 Release & Documentation Synchronization — Complete
-Plan: All phases (0..5) and release documentation synchronized
-Status: Milestone v3.0 complete (`586` Python tests, `7` Rust tests, `71/71` conformance vectors in `--both` mode, `92%` coverage)
-Last activity: 2026-11-05 — Synchronized `CHANGELOG.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/TEST_COVERAGE.md`, `docs/USER_GUIDE.md`, `docs/user-guide/README.md`, `.planning/ROADMAP.md`, `.planning/PROJECT.md`, and bumped version to `3.0.0`
+Phase: Post-v3.0 Candidate Tracks 1–4 (`v3.1 Feature Track`) — Complete
+Plan: Tracks 1, 2, 3, and 4 (`FLT-01` + `ADPT-01`) executed and verified
+Status: All planned tracks complete (`616` Python tests, `8` Rust tests, `71/71` conformance vectors in `--both` mode)
+Last activity: 2026-11-08 — Completed Track 4 (`FLT-01` Dynamic Content-Based Route Filtering across Python + Rust and `ADPT-01` HTTP/Webhook & WebSocket protocol adapters)
 
 Progress: [██████████] 100%
 

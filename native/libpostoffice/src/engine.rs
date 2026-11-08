@@ -459,6 +459,464 @@ pub fn canary_bucket(source_broker: &str, source_topic: &str, payload: &[u8]) ->
     (val % 100) as u8
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FilterTarget {
+    Payload,
+    Kwargs,
+    Headers,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FilterStep {
+    Key(String),
+    Index(usize),
+}
+
+fn parse_filter_path(path: &str) -> Result<(FilterTarget, Vec<FilterStep>), String> {
+    if path.is_empty() || path.len() > 256 {
+        return Err("filter path must be a non-empty string (<= 256 chars)".to_string());
+    }
+
+    let (target, rel) = if let Some(rest) = path.strip_prefix("$kwargs.") {
+        (FilterTarget::Kwargs, rest)
+    } else if let Some(rest) = path.strip_prefix("$headers.") {
+        (FilterTarget::Headers, rest)
+    } else if let Some(rest) = path.strip_prefix("$.") {
+        (FilterTarget::Payload, rest)
+    } else if path.starts_with("$[") {
+        (FilterTarget::Payload, &path[1..])
+    } else if path.starts_with('$') {
+        return Err(format!("unsupported filter path root in '{path}'"));
+    } else {
+        (FilterTarget::Payload, path)
+    };
+
+    if rel.is_empty() || rel.starts_with('.') || rel.ends_with('.') || rel.contains("..") {
+        return Err(format!("invalid filter path syntax: '{path}'"));
+    }
+
+    let mut steps = Vec::new();
+    for token in rel.split('.') {
+        if token.is_empty() {
+            return Err(format!("empty path segment in '{path}'"));
+        }
+        if !token.contains('[') && !token.contains(']') {
+            steps.push(FilterStep::Key(token.to_string()));
+            continue;
+        }
+        let Some(bracket_pos) = token.find('[') else {
+            return Err(format!("malformed bracket in path segment '{token}'"));
+        };
+        if token[..bracket_pos].contains(']') {
+            return Err(format!("malformed bracket in path segment '{token}'"));
+        }
+        let prefix = &token[..bracket_pos];
+        if !prefix.is_empty() {
+            steps.push(FilterStep::Key(prefix.to_string()));
+        }
+
+        let bytes = token.as_bytes();
+        let mut pos = bracket_pos;
+        let n = bytes.len();
+        while pos < n {
+            if bytes[pos] != b'[' {
+                return Err(format!("unexpected characters after ']' in '{token}'"));
+            }
+            let Some(rel_close) = token[pos + 1..].find(']') else {
+                return Err(format!("unclosed '[' in '{token}'"));
+            };
+            let close_pos = pos + 1 + rel_close;
+            let idx_str = &token[pos + 1..close_pos];
+            if idx_str.is_empty() || !idx_str.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(format!(
+                    "array index must be non-negative digits in '{token}'"
+                ));
+            }
+            let idx: usize = idx_str
+                .parse()
+                .map_err(|_| format!("invalid array index in '{token}'"))?;
+            steps.push(FilterStep::Index(idx));
+            pos = close_pos + 1;
+        }
+    }
+
+    if steps.is_empty() {
+        return Err(format!("filter path produced no lookup steps: '{path}'"));
+    }
+    Ok((target, steps))
+}
+
+fn is_valid_filter_op(op: &str) -> bool {
+    matches!(
+        op,
+        "==" | "eq"
+            | "!="
+            | "ne"
+            | ">"
+            | "gt"
+            | ">="
+            | "gte"
+            | "<"
+            | "lt"
+            | "<="
+            | "lte"
+            | "in"
+            | "contains"
+            | "exists"
+            | "prefix"
+            | "startswith"
+            | "suffix"
+            | "endswith"
+    )
+}
+
+fn is_ordering_op(op: &str) -> bool {
+    matches!(op, ">" | "gt" | ">=" | "gte" | "<" | "lt" | "<=" | "lte")
+}
+
+fn is_prefix_suffix_op(op: &str) -> bool {
+    matches!(op, "prefix" | "startswith" | "suffix" | "endswith")
+}
+
+pub fn validate_filter_json(spec: &JsonValue, max_depth: usize) -> Result<(), String> {
+    if max_depth < 1 {
+        return Err("filter nesting exceeds max_depth".to_string());
+    }
+    let Some(entries) = spec.as_object() else {
+        return Err("filter spec must be a non-empty object".to_string());
+    };
+    if entries.is_empty() {
+        return Err("filter spec must be a non-empty object".to_string());
+    }
+
+    let has_comb = entries
+        .iter()
+        .any(|(k, _)| matches!(k.as_str(), "all" | "any" | "not"));
+    if has_comb {
+        if entries.len() != 1 {
+            return Err("combinator filter must contain exactly one key".to_string());
+        }
+        let (key, sub) = &entries[0];
+        match key.as_str() {
+            "all" | "any" => {
+                let Some(arr) = sub.as_array() else {
+                    return Err(format!(
+                        "'{key}' combinator must be a non-empty list (<= 64 items)"
+                    ));
+                };
+                if arr.is_empty() || arr.len() > 64 {
+                    return Err(format!(
+                        "'{key}' combinator must be a non-empty list (<= 64 items)"
+                    ));
+                }
+                for item in arr {
+                    validate_filter_json(item, max_depth - 1)?;
+                }
+                return Ok(());
+            }
+            "not" => {
+                return validate_filter_json(sub, max_depth - 1);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    for (k, _) in entries {
+        if !matches!(k.as_str(), "path" | "op" | "value") {
+            return Err("filter predicate contains unknown keys".to_string());
+        }
+    }
+
+    let Some(path) = spec.get("path").and_then(|v| v.as_str()) else {
+        return Err("filter predicate requires 'path' and 'op'".to_string());
+    };
+    let Some(op) = spec.get("op").and_then(|v| v.as_str()) else {
+        return Err("filter predicate requires 'path' and 'op'".to_string());
+    };
+
+    parse_filter_path(path)?;
+    if !is_valid_filter_op(op) {
+        return Err(format!("unsupported filter operator: '{op}'"));
+    }
+
+    if op == "exists" {
+        if let Some(val) = spec.get("value") {
+            if val.as_bool().is_none() {
+                return Err("'exists' operator requires a boolean value".to_string());
+            }
+        }
+        return Ok(());
+    }
+
+    let Some(val) = spec.get("value") else {
+        return Err(format!("operator '{op}' requires a 'value'"));
+    };
+
+    if is_ordering_op(op) {
+        if !matches!(val, JsonValue::Number(_, _) | JsonValue::Str(_)) {
+            return Err(format!(
+                "operator '{op}' requires a numeric or string value"
+            ));
+        }
+    } else if op == "in" {
+        if !matches!(val, JsonValue::Array(_) | JsonValue::Str(_)) {
+            return Err("operator 'in' requires a list or string value".to_string());
+        }
+    } else if is_prefix_suffix_op(op) && !matches!(val, JsonValue::Str(_)) {
+        return Err(format!("operator '{op}' requires a string value"));
+    }
+
+    Ok(())
+}
+
+fn json_eq(a: &JsonValue, b: &JsonValue) -> bool {
+    match (a, b) {
+        (JsonValue::Null, JsonValue::Null) => true,
+        (JsonValue::Bool(x), JsonValue::Bool(y)) => x == y,
+        (JsonValue::Number(x, _), JsonValue::Number(y, _)) => x == y,
+        (JsonValue::Str(x), JsonValue::Str(y)) => x == y,
+        (JsonValue::Array(x), JsonValue::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y.iter()).all(|(xi, yi)| json_eq(xi, yi))
+        }
+        (JsonValue::Object(x), JsonValue::Object(y)) => {
+            if x.len() != y.len() {
+                return false;
+            }
+            for (k, xv) in x {
+                let Some(yv) = b.get(k) else {
+                    return false;
+                };
+                if !json_eq(xv, yv) {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn resolve_filter_steps<'a>(root: &'a JsonValue, steps: &[FilterStep]) -> Option<&'a JsonValue> {
+    let mut cur = root;
+    for step in steps {
+        match step {
+            FilterStep::Key(k) => {
+                cur = cur.get(k)?;
+            }
+            FilterStep::Index(idx) => {
+                let arr = cur.as_array()?;
+                cur = arr.get(*idx)?;
+            }
+        }
+    }
+    Some(cur)
+}
+
+fn eval_filter_op(op: &str, extracted: Option<&JsonValue>, expected: Option<&JsonValue>) -> bool {
+    if op == "exists" {
+        let want = expected.and_then(|v| v.as_bool()).unwrap_or(true);
+        let present = matches!(extracted, Some(v) if !matches!(v, JsonValue::Null));
+        return present == want;
+    }
+
+    let (Some(ext), Some(exp)) = (extracted, expected) else {
+        return false;
+    };
+
+    if matches!(op, "==" | "eq") {
+        return json_eq(ext, exp);
+    }
+    if matches!(op, "!=" | "ne") {
+        return !json_eq(ext, exp);
+    }
+
+    if is_ordering_op(op) {
+        match (ext, exp) {
+            (JsonValue::Number(lhs, _), JsonValue::Number(rhs, _)) => {
+                return match op {
+                    ">" | "gt" => lhs > rhs,
+                    ">=" | "gte" => lhs >= rhs,
+                    "<" | "lt" => lhs < rhs,
+                    _ => lhs <= rhs,
+                };
+            }
+            (JsonValue::Str(lhs), JsonValue::Str(rhs)) => {
+                return match op {
+                    ">" | "gt" => lhs > rhs,
+                    ">=" | "gte" => lhs >= rhs,
+                    "<" | "lt" => lhs < rhs,
+                    _ => lhs <= rhs,
+                };
+            }
+            _ => return false,
+        }
+    }
+
+    if op == "in" {
+        return match exp {
+            JsonValue::Array(items) => items.iter().any(|item| json_eq(ext, item)),
+            JsonValue::Str(haystack) => {
+                if let Some(needle) = ext.as_str() {
+                    haystack.contains(needle)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+    }
+
+    if op == "contains" {
+        return match ext {
+            JsonValue::Array(items) => items.iter().any(|item| json_eq(item, exp)),
+            JsonValue::Str(haystack) => {
+                if let Some(needle) = exp.as_str() {
+                    haystack.contains(needle)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+    }
+
+    if matches!(op, "prefix" | "startswith") {
+        return match (ext.as_str(), exp.as_str()) {
+            (Some(s), Some(p)) => s.starts_with(p),
+            _ => false,
+        };
+    }
+
+    if matches!(op, "suffix" | "endswith") {
+        return match (ext.as_str(), exp.as_str()) {
+            (Some(s), Some(sfx)) => s.ends_with(sfx),
+            _ => false,
+        };
+    }
+
+    false
+}
+
+enum LazyPayload<'a> {
+    Unparsed(&'a [u8]),
+    Invalid,
+    Valid(JsonValue),
+}
+
+impl<'a> LazyPayload<'a> {
+    fn get(&mut self) -> Option<&JsonValue> {
+        if let LazyPayload::Unparsed(raw) = *self {
+            let parsed = std::str::from_utf8(raw)
+                .ok()
+                .and_then(|s| parse_json(s).ok())
+                .filter(|v| matches!(v, JsonValue::Object(_) | JsonValue::Array(_)));
+            *self = match parsed {
+                Some(v) => LazyPayload::Valid(v),
+                None => LazyPayload::Invalid,
+            };
+        }
+        match self {
+            LazyPayload::Valid(ref v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+fn evaluate_filter_inner(
+    spec: &JsonValue,
+    cache: &mut LazyPayload<'_>,
+    source_kwargs: &JsonValue,
+    depth: usize,
+) -> bool {
+    if depth == 0 {
+        return false;
+    }
+    let Some(entries) = spec.as_object() else {
+        return false;
+    };
+    if entries.is_empty() {
+        return false;
+    }
+
+    if entries.len() == 1 {
+        let (k, sub) = &entries[0];
+        if k == "all" {
+            let Some(arr) = sub.as_array() else {
+                return false;
+            };
+            if arr.is_empty() {
+                return false;
+            }
+            return arr
+                .iter()
+                .all(|item| evaluate_filter_inner(item, cache, source_kwargs, depth - 1));
+        }
+        if k == "any" {
+            let Some(arr) = sub.as_array() else {
+                return false;
+            };
+            if arr.is_empty() {
+                return false;
+            }
+            return arr
+                .iter()
+                .any(|item| evaluate_filter_inner(item, cache, source_kwargs, depth - 1));
+        }
+        if k == "not" {
+            return !evaluate_filter_inner(sub, cache, source_kwargs, depth - 1);
+        }
+    }
+
+    let Some(path) = spec.get("path").and_then(|v| v.as_str()) else {
+        return false;
+    };
+    let Some(op) = spec.get("op").and_then(|v| v.as_str()) else {
+        return false;
+    };
+    if !is_valid_filter_op(op) {
+        return false;
+    }
+    let expected = spec.get("value");
+    if op != "exists" && expected.is_none() {
+        return false;
+    }
+
+    let Ok((target, steps)) = parse_filter_path(path) else {
+        return false;
+    };
+
+    let extracted = match target {
+        FilterTarget::Payload => {
+            let Some(root) = cache.get() else {
+                return false;
+            };
+            resolve_filter_steps(root, &steps)
+        }
+        FilterTarget::Kwargs => resolve_filter_steps(source_kwargs, &steps),
+        FilterTarget::Headers => {
+            if let Some(headers) = source_kwargs.get("headers") {
+                if headers.as_object().is_some() {
+                    resolve_filter_steps(headers, &steps)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+    };
+
+    eval_filter_op(op, extracted, expected)
+}
+
+pub fn evaluate_filter(spec: &JsonValue, payload: &[u8], source_kwargs: &JsonValue) -> bool {
+    if matches!(spec, JsonValue::Null) {
+        return true;
+    }
+    let mut cache = LazyPayload::Unparsed(payload);
+    evaluate_filter_inner(spec, &mut cache, source_kwargs, 8)
+}
+
 impl EngineState {
     pub fn new(max_label_values: usize) -> Self {
         let host_ram = crate::governor::detect_host_ram_bytes();
@@ -518,6 +976,18 @@ impl EngineState {
         true
     }
 
+    pub fn route_matches_filter(
+        &self,
+        route_cfg: &JsonValue,
+        payload: &[u8],
+        source_kwargs: &JsonValue,
+    ) -> bool {
+        match route_cfg.get("filter") {
+            None | Some(JsonValue::Null) => true,
+            Some(spec) => evaluate_filter(spec, payload, source_kwargs),
+        }
+    }
+
     pub fn register_broker(
         &mut self,
         name: &str,
@@ -549,6 +1019,11 @@ impl EngineState {
         target_topic: &str,
         target_kwargs: Vec<(String, JsonValue)>,
     ) -> Result<bool, String> {
+        for (k, v) in &target_kwargs {
+            if k == "filter" && !matches!(v, JsonValue::Null) {
+                validate_filter_json(v, 8)?;
+            }
+        }
         let mut route_entries = vec![
             (
                 "target_client".to_string(),
@@ -842,11 +1317,13 @@ impl EngineState {
             }
         }
 
-        // 3. Fan-out across matched routes (filtered by worker_engine / canary split)
+        // 3. Fan-out across matched routes (filtered by worker_engine / canary split and content filter)
         let mut active_route_cfgs: Vec<JsonValue> = Vec::new();
         for route_str in &matched_json_strs {
             if let Ok(route_cfg) = parse_json(route_str) {
-                if self.route_matches_engine(&route_cfg, source_broker, source_topic, payload) {
+                if self.route_matches_engine(&route_cfg, source_broker, source_topic, payload)
+                    && self.route_matches_filter(&route_cfg, payload, source_kwargs)
+                {
                     active_route_cfgs.push(route_cfg);
                 }
             }
@@ -904,6 +1381,7 @@ impl EngineState {
                 "wire_format_out",
                 "confluent_framing",
                 "engine",
+                "filter",
             ];
             let mut publish_kwargs: Vec<(String, JsonValue)> = Vec::new();
             for (k, v) in entries {
@@ -1476,5 +1954,33 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.stop_metrics_server();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_validation_and_evaluation() {
+        let spec = parse_json(
+            r#"{"all":[{"path":"$.sensor.readings[1].temp","op":">=","value":25.5},{"path":"$headers.region","op":"in","value":["us-east","eu-west"]}]}"#,
+        )
+        .unwrap();
+        assert!(validate_filter_json(&spec, 8).is_ok());
+
+        let payload = br#"{"sensor":{"readings":[{"temp":20.0},{"temp":26.1}]}}"#;
+        let kwargs = parse_json(r#"{"headers":{"region":"us-east"}}"#).unwrap();
+        assert!(evaluate_filter(&spec, payload, &kwargs));
+
+        let bad_kwargs = parse_json(r#"{"headers":{"region":"ap-south"}}"#).unwrap();
+        assert!(!evaluate_filter(&spec, payload, &bad_kwargs));
+
+        let strict_bool = parse_json(r#"{"path":"$.flag","op":"==","value":1}"#).unwrap();
+        assert!(!evaluate_filter(
+            &strict_bool,
+            br#"{"flag":true}"#,
+            &JsonValue::Object(vec![])
+        ));
     }
 }

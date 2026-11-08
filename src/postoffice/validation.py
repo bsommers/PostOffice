@@ -10,6 +10,7 @@ import typing
 from typing import Any, Dict, Set
 
 import postoffice.plugins  # noqa: F401  (registers the built-in protocols)
+from postoffice.filtering import validate_filter_spec
 from postoffice.registry import ClientRegistry
 
 ACTIONS = ("add_broker", "add_route", "add_subscription", "update_broker_security", "clear_state",
@@ -139,6 +140,11 @@ def _validate_route(data: Dict[str, Any]) -> None:
     if "engine" in data["target_kwargs"]:
         _require(data["target_kwargs"]["engine"] in VALID_ENGINES,
                  "route engine must be one of all, python, native, canary")
+    if "filter" in data["target_kwargs"] and data["target_kwargs"]["filter"] is not None:
+        try:
+            validate_filter_spec(data["target_kwargs"]["filter"])
+        except ValueError as exc:
+            raise PayloadError(str(exc)) from None
 
 
 def _validate_subscription(data: Dict[str, Any]) -> None:

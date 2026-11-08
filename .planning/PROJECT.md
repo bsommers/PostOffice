@@ -31,12 +31,11 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **RES-03**: Dynamic in-flight TLS certificate and credential hot-reload without worker process restart — v2.1
 - [x] **DOS-01 (`D1`–`D11`)**: Pre-routing `IngressFirewall`, `ContentGuard`, `SenderLedger`, `InFlightGate`, `RetryLimiter`, `BudgetedDlq`, `MemoryGovernor`, and HMAC-SHA256 Control Plane signing — v3.0
 - [x] **NAT-01 (Phases 0–5)**: Hybrid Rust `libpostoffice` C ABI & `NativeEngine` (`native/libpostoffice/`), 71-vector polyglot conformance suite (`conformance/run.py --both`), shadow mode (`ShadowModeRunner`), mixed-fleet canary rollout (`CanaryRolloutController`), native bounded queues (`TargetPublishQueue`), opt-in edge disk store-and-forward (`DiskStoreAndForward`), and Redis Streams (`postoffice:config_stream`) replay — v3.0
-
-### Future Considerations (v3.0 Candidates)
-
-- **FLT-01**: Dynamic content-based filtering (JSONPath/CEL expressions) in topic routes
-- **INT-01**: Live multi-broker integration test suite running against Docker Compose stack
-- **ADPT-01**: Additional protocol adapters (HTTP/Webhooks, gRPC, WebSocket)
+- [x] **SDK-01**: Polyglot v1 Client SDK scaffolding (`sdks/c`, `sdks/go`, `sdks/rust`, `sdks/ts`) and `docs/contracts/SDK_GUIDE.md` — Track 1
+- [x] **EDGE-01**: Edge binary packaging (`Dockerfile.native`), stripped `postoffice-worker` (`< 1 MB`), and RSS/throughput verification (`scripts/verify_edge_profile.py`) — Track 2
+- [x] **INT-01**: Live multi-broker & Redis integration soak harness (`scripts/run_live_soak.py`, `tests/integration/test_live_broker_soak.py`) — Track 3
+- [x] **FLT-01**: Dynamic content-based route filtering (`src/postoffice/filtering.py` & `native/libpostoffice/src/engine.rs` JSONPath + boolean combinators with 100% `ShadowHarness` parity) — Track 4 (v3.1)
+- [x] **ADPT-01**: Additional protocol adapters (`HttpClient` / `WebhookClient` in `src/postoffice/plugins/http_client.py` and RFC 6455 `WebSocketClient` / `WebSocketServer` in `src/postoffice/plugins/websocket_client.py`) — Track 4 (v3.1)
 
 ### Out of Scope
 

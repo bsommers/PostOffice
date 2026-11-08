@@ -4,6 +4,19 @@ All notable changes to the PostOffice project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Dynamic Content-Based Route Filtering (`FLT-01`):**
+  - Declarative JSONPath and metadata (`$kwargs.*`, `$headers.*`) predicate evaluation (`==`, `!=`, `>`, `>=`, `<`, `<=`, `in`, `contains`, `exists`, `prefix`, `suffix`) and boolean combinators (`all`, `any`, `not`) in [`src/postoffice/filtering.py`](src/postoffice/filtering.py) and [`native/libpostoffice/src/engine.rs`](native/libpostoffice/src/engine.rs) with 100% `ShadowHarness` parity (`tests/test_route_filtering.py`).
+- **HTTP/Webhook & WebSocket Protocol Adapters (`ADPT-01`):**
+  - `@ClientRegistry.register("http")` [`HttpClient`](src/postoffice/plugins/http_client.py) and `@ClientRegistry.register("webhook")` [`WebhookClient`](src/postoffice/plugins/http_client.py) supporting `ThreadingHTTPServer` webhook ingress, Bearer/Basic auth, `urllib.request` HTTP `POST` egress, offline publish buffering, and `reload_security()`.
+  - `@ClientRegistry.register("websocket")` [`WebSocketClient`](src/postoffice/plugins/websocket_client.py) and [`WebSocketServer`](src/postoffice/plugins/websocket_client.py) implementing pure-stdlib RFC 6455 handshake, frame masking/unmasking, JSON base64 / `<topic>:<payload>` envelopes, offline publish buffering, and `reload_security()` (`tests/test_http_websocket_plugins.py`).
+- **Polyglot v1 Client SDKs, Edge Profile & Live Broker Soak (Tracks 1–3):**
+  - C (`sdks/c/`), Go (`sdks/go/`), Rust (`sdks/rust/`), and TypeScript/ESM (`sdks/ts/`) client SDKs (`tests/test_polyglot_sdks.py`, `docs/contracts/SDK_GUIDE.md`).
+  - Multi-stage `Dockerfile.native`, `scripts/verify_edge_profile.py`, and `docs/runbooks/edge-deployment.md` (`tests/test_edge_packaging.py`).
+  - Live Redis/broker soak harness (`scripts/run_live_soak.py`, `tests/integration/test_live_broker_soak.py`, `tests/test_live_soak_harness.py`).
+
 ## [3.0.0] - 2026-11-05
 
 ### Added

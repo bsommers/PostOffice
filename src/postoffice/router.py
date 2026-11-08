@@ -8,6 +8,7 @@ from postoffice.trie import TopicTrie
 from postoffice.ingress import Action, Firewall, InflightLimiter, MessageContext, RetryTracker
 from postoffice.metrics import MetricsManager
 from postoffice.dlq import BudgetedDlq, dlq_fingerprint, format_dlq_payload
+from postoffice.filtering import evaluate_filter, validate_filter_spec
 from postoffice.resiliency import CircuitBreaker, CircuitBreakerOpenError
 from postoffice.schema import (
     BaseSchemaRegistry,
@@ -181,6 +182,14 @@ class Router:
             if self.worker_engine == "python":
                 return bucket >= self.native_percentage
         return True
+
+    def _route_matches_filter(
+        self, route_config: Dict[str, Any], message: bytes, source_kwargs: Dict[str, Any]
+    ) -> bool:
+        flt = route_config.get("filter")
+        if flt is None:
+            return True
+        return evaluate_filter(flt, message, source_kwargs)
 
     def set_latency_probe(self, probe_fn: Optional[Callable[[int], None]]) -> None:
         """Installs or clears a nanosecond latency callback invoked on every Router.route() call."""
@@ -463,6 +472,8 @@ class Router:
         return len(route_parts) == len(msg_parts)
 
     def add_route(self, source_client: str, source_topic: str, target_client: str, target_topic: str, **target_kwargs):
+        if "filter" in target_kwargs and target_kwargs["filter"] is not None:
+            validate_filter_spec(target_kwargs["filter"])
         key = (source_client, source_topic)
         if key not in self.routes:
             self.routes[key] = []
@@ -639,9 +650,10 @@ class Router:
         matching_routes = [
             rc for rc in raw_matching_routes
             if self._route_matches_engine(rc, source_client, source_topic, message)
+            and self._route_matches_filter(rc, message, source_kwargs)
         ]
         if not matching_routes:
-            # Route exists in cluster trie, but is assigned to peer engine (e.g. engine="native" or canary split)
+            # Route exists in cluster trie, but is assigned to peer engine or filtered out by content predicate
             if ack_fn:
                 ack_fn()
             self.metrics.record_duration(source_client, time.perf_counter() - start_time)
@@ -680,7 +692,7 @@ class Router:
                 "target_client", "target_topic", "dlq_broker", "dlq_topic",
                 "input_format", "input_schema", "output_format", "output_schema",
                 "wire_format", "wire_format_in", "wire_format_out", "confluent_framing",
-                "engine",
+                "engine", "filter",
             )
             raw_kwargs = {
                 k: v for k, v in route_config.items()
