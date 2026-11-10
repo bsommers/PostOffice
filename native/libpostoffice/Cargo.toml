@@ -1,6 +1,6 @@
 [package]
 name = "postoffice"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 description = "PostOffice Native Core Library (libpostoffice) — TopicTrie, Firewall, ContentGuard, SenderLedger, MemoryGovernor, and Wire Codecs"
 
