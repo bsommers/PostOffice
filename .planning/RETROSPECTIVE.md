@@ -39,3 +39,20 @@ This document records reflections, patterns, efficiency gains, and lessons learn
 ### Key Lessons
 - Python with Trie indexing handles 1.2M+ topic matches per second, proving that high-throughput routing can be achieved in Python before needing a full Rust/C++ rewrite.
 - Clear state management (`reset()`) is critical for long-running daemon workers subject to dynamic Control Plane reconfigurations.
+
+## Milestone: v3.0 + v3.1 — Native Core, Filtering, Adapters, SDKs
+
+**Shipped:** 2026-11-05 / 2026-11-08
+**Phases:** Native 0-5 + 4 tracks (quick slices)
+
+### What Was Built
+Rust libpostoffice + NativeEngine, DoS protections, shadow/canary rollout, SDKs, edge profile, soak harness, route filtering, HTTP/WebSocket adapters.
+
+### What Worked
+- Dual-engine conformance vectors caught Python/Rust divergence early.
+
+### What Was Inefficient
+- Work ran as quick slices, so STATE/REQUIREMENTS/MILESTONES drifted and the GSD archive CLI could not be used as-is. Native metrics parity was not part of the engine's definition of done.
+
+### Key Lessons
+- Track new requirement IDs in REQUIREMENTS.md from the start; include observability parity in native-engine acceptance criteria.

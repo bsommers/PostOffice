@@ -6,6 +6,7 @@
 - ✅ **v2.0 Schema Transformation & Production Security** — Phases 5-6 (shipped 2026-10-13)
 - ✅ **v2.1 Operational Resiliency & In-Flight Queuing** — Phases 7-8 (shipped 2026-10-18)
 - ✅ **v3.0 Native Rust Core, DoS Protection & Mixed-Fleet Rollout** — Native Rewrite Phases 0-5 (shipped 2026-11-05)
+- ✅ **v3.1 Route Filtering, Adapters, SDKs & Edge** — Tracks 1-4 (shipped 2026-11-08)
 
 ## Phases
 
@@ -75,4 +76,5 @@
 | 6. Production Security & Auth | v2.0 | 2/2 | Complete | 2026-10-13 |
 | 7. Operational Resiliency & Client Queuing | v2.1 | 2/2 | Complete | 2026-10-17 |
 | 8. Backpressure, Circuit Breakers & Hot-Reload | v2.1 | 2/2 | Complete | 2026-10-18 |
-
+| Remediation D1-D11 + Native Phases 0-5 | v3.0 | 20/20 slices | Complete | 2026-11-05 |
+| Tracks 1-4 (SDK, Edge, Soak, FLT-01/ADPT-01) | v3.1 | 4/4 tracks | Complete | 2026-11-08 |

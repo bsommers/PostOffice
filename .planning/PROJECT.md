@@ -47,7 +47,8 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 
 - Messaging protocol diversity: IoT devices produce MQTT, enterprise queueing uses RabbitMQ, and analytics backbones consume Kafka.
 - Horizontal scaling: Multiple Data Plane workers run against edge brokers using native features (MQTT 5 shared subscriptions, Kafka consumer groups, AMQP shared queues) to prevent message duplication.
-- Shipped v2.1 with 94 unit tests passing in 0.55s hermetic execution.
+- Shipped v3.1 with 616 Python tests, 8 Rust tests, and 71/71 dual-engine conformance vectors.
+- Future (parked): Raft / HA control plane. Planned v3.2: OpenTelemetry exports, intersecting with the recognizer-telemetry project.
 
 ## Constraints
 
@@ -56,5 +57,5 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - Hermetic testability: Unit tests must execute cleanly without external network broker dependencies via mocking.
 
 ---
-*Last updated: 2026-10-18 after v2.1 milestone completion*
+*Last updated: 2026-11-11 after v3.1 milestone completion*
 

@@ -4,6 +4,33 @@ This document tracks all completed and active milestone releases of PostOffice.
 
 ---
 
+## [v3.1] Route Filtering, HTTP/WebSocket Adapters, SDKs & Edge Profile
+
+**Completed:** 2026-11-08 (tag `v3.1.0`)
+**Tracks:** SDK-01, EDGE-01, INT-01, FLT-01, ADPT-01 (executed as quick slices)
+**Tests:** 616 Python, 8 Rust, 71/71 dual-engine conformance vectors
+**Audit Report:** `.planning/milestones/v3.1-MILESTONE-AUDIT.md` (tech_debt, no blockers)
+
+### Delivered
+Content-based route filtering with Python/Rust parity, HTTP/Webhook and WebSocket adapters, polyglot C/Go/Rust/TS SDKs, edge binary profile, and a live Redis/broker soak harness.
+
+### Known Gaps / Carried Forward
+- Native `/metrics` lacks `sender_events_total`, `routing_duration_seconds`, `inflight_messages`; native metrics server not started by `PostOffice` (-> v3.2 OTel).
+- Native crate has no HTTP/WebSocket delivery; `ControlPlane.add_route` does not validate filters.
+- Raft / HA control plane deferred to a future milestone.
+
+---
+
+## [v3.0] Native Rust Core, DoS Protection & Mixed-Fleet Rollout
+
+**Completed:** 2026-11-05 (tag `v3.0.0`)
+**Scope:** Architecture remediation & DoS protection (D1-D11) plus Native Phases 0-5
+
+### Delivered
+Rust `libpostoffice` with C ABI and `NativeEngine`, 71-vector conformance suite, shadow mode, canary rollout, native queues, edge store-and-forward, Redis Streams replay, and ingress firewall/content guard/sender ledger protections.
+
+---
+
 ## [v2.1] Operational Resiliency & In-Flight Queuing
 
 **Completed:** 2026-10-18

@@ -1,0 +1,22 @@
+# Quick tasks archived at v3.1 close (2026-11-11)
+
+- 261028-61c-d9d-ingress-rules-over-the-control-plane
+- 261028-d10-d9-docs-and-control-plane-load-test
+- 261028-d11-firewall-guide-and-integration-rerun
+- 261030-p0a-phase0-decisions-oracle-micro
+- 261030-p0b-rust-loadgen-mqtt-hdr
+- 261030-p0c-python-baseline-benchmarks
+- 261030-p0d-rust-vs-go-bakeoff-adr
+- 261031-p1a-idl-openapi-c-abi
+- 261031-p1b-core-contracts-docs
+- 261031-p1c-conformance-suite
+- 261102-p2a-rust-libpostoffice-c-abi
+- 261102-p2b-python-ffi-bridge-feature-flag
+- 261102-p2c-fuzz-microbench-edge-profile
+- 261102-p3a-native-worker-core
+- 261102-p3b-protocol-adapters-and-drills
+- 261102-p3c-shadow-mode-and-soak
+- 261103-p4a-canary-rollout
+- 261103-p4b-operational-parity
+- 261103-p5a-native-queues-storage
+- 261103-p5b-consolidation

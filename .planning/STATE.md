@@ -8,8 +8,8 @@ progress:
   completed_plans: 16
   percent: 100
 milestone:
-  name: v3.0 Native Rust Core, DoS Protection & Mixed-Fleet Rollout
-  active_phase: phase-5-consolidate
+  name: v3.1 complete; next v3.2 Observability Exports (OpenTelemetry)
+  active_phase: none
 ---
 
 # Project State
