@@ -8,6 +8,18 @@ PostOffice is a hardened, multi-protocol messaging system and translation bridge
 
 Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
 
+## Current Milestone: v3.2 Observability Exports (OpenTelemetry)
+
+**Goal:** Make PostOffice observable through OpenTelemetry, with the Python and native engines exporting the same signals.
+
+**Target features:**
+- Native metrics parity (`sender_events_total`, `routing_duration_seconds`, `inflight_messages`) and native metrics server wiring in `PostOffice`
+- OTel metrics/traces/logs export (OTLP) from both engines, with trace-context propagation across protocol hops
+- ControlPlane filter validation at admin time plus filter docs/examples
+- Placeholder: integration with recognizer-telemetry (github.com/bilism1010/recognizer-telemetry), scope TBD when the repo is supplied
+
+**Parked (future):** Raft / HA control plane.
+
 ## Requirements
 
 ### Validated
@@ -37,10 +49,18 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - [x] **FLT-01**: Dynamic content-based route filtering (`src/postoffice/filtering.py` & `native/libpostoffice/src/engine.rs` JSONPath + boolean combinators with 100% `ShadowHarness` parity) — Track 4 (v3.1)
 - [x] **ADPT-01**: Additional protocol adapters (`HttpClient` / `WebhookClient` in `src/postoffice/plugins/http_client.py` and RFC 6455 `WebSocketClient` / `WebSocketServer` in `src/postoffice/plugins/websocket_client.py`) — Track 4 (v3.1)
 
+### Active
+
+- [ ] Native metrics parity and native metrics server wiring (OTEL milestone phase 9)
+- [ ] OpenTelemetry export of metrics, traces, logs (Python + native)
+- [ ] ControlPlane route-filter validation and filter docs
+- [ ] recognizer-telemetry integration (TBD)
+
 ### Out of Scope
 
 - Monolithic protocol rewrites — keep adapters isolated in `src/postoffice/plugins/`
 - Direct broker-to-broker binary tunnels without application-level routing inspection
+- Raft / HA control plane — deferred to a future milestone (backlog)
 - Custom message broker storage engine — PostOffice bridges existing brokers, does not store broker state
 
 ## Context
@@ -57,5 +77,5 @@ Seamlessly route and translate messaging payloads and delivery semantics across 
 - Hermetic testability: Unit tests must execute cleanly without external network broker dependencies via mocking.
 
 ---
-*Last updated: 2026-11-11 after v3.1 milestone completion*
+*Last updated: 2026-11-11 after starting v3.2 milestone*
 

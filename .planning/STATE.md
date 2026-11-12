@@ -1,15 +1,16 @@
 ---
-gsd_state_version: '1.0'
-status: milestone_complete
+gsd_state_version: "1.0"
+milestone: v3.2
+milestone_name: Observability Exports (OpenTelemetry)
+status: planning
+last_updated: "2026-11-12T03:21:00.301Z"
+last_activity: 2026-11-11
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
-milestone:
-  name: v3.1 complete; next v3.2 Observability Exports (OpenTelemetry)
-  active_phase: none
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -23,12 +24,10 @@ See: `.planning/PROJECT.md` (updated 2026-11-05)
 
 ## Current Position
 
-Phase: Post-v3.0 Candidate Tracks 1–4 (`v3.1 Feature Track`) — Complete
-Plan: Tracks 1, 2, 3, and 4 (`FLT-01` + `ADPT-01`) executed and verified
-Status: All planned tracks complete (`616` Python tests, `8` Rust tests, `71/71` conformance vectors in `--both` mode)
-Last activity: 2026-11-08 — Completed Track 4 (`FLT-01` Dynamic Content-Based Route Filtering across Python + Rust and `ADPT-01` HTTP/Webhook & WebSocket protocol adapters)
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-11-11 — Milestone v3.2 started
 
 ## Performance Metrics
 
@@ -79,4 +78,3 @@ Progress: [██████████] 100%
 
 ---
 *Last updated: 2026-10-18 after Milestone v2.1 completion*
-
