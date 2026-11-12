@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+<title id="t">Router icon</title>
+<defs></defs>
+<g fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx='10' cy='32' r='4'/><path d='M14 32h14l10-18h14M28 32h24M28 32l10 18h14'/><path d='M48 10l4 4-4 4M48 28l4 4-4 4M48 46l4 4-4 4'/><path d='M34 4v6M31 7h6' stroke-width='1.5'/></g>
+</svg>

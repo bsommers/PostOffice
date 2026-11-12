@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+<title id="t">AMQP icon</title>
+<defs></defs>
+<g fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x='10' y='22' width='40' height='20' rx='2'/><path d='M22 22v20M34 22v20'/><path d='M2 32h6M46 32h-0M50 32h10M56 28l4 4-4 4M4 28l4 4-4 4'/><rect x='13' y='27' width='6' height='10' stroke-width='1.5'/></g>
+</svg>

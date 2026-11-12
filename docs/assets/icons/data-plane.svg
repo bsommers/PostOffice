@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+<title id="t">Data plane icon</title>
+<defs></defs>
+<g fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M6 18h40M6 32h48M6 46h40'/><path d='M40 12l8 6-8 6M48 26l8 6-8 6M40 40l8 6-8 6'/><path d='M16 14v8M24 28v8M16 42v8' stroke-width='1.5'/></g>
+</svg>

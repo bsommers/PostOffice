@@ -1,4 +1,8 @@
+<p align="center"><img src="docs/assets/logo.svg" alt="PostOffice" width="520"></p>
+
 # PostOffice
+
+Site: https://bsommers.github.io/PostOffice/
 
 PostOffice is a high-throughput, hybrid Rust/Python multi-protocol messaging system and semantic translation bridge routing data between MQTT, AMQP (RabbitMQ), Apache Kafka, and NanoMQ edge brokers with verified delivery guarantees.
 

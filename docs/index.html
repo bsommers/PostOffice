@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostOffice Message Bridge</title>
+<meta name="description" content="PostOffice is a hybrid Rust/Python multi-protocol message bridge routing MQTT, AMQP, Kafka and NanoMQ with verified delivery guarantees.">
+<meta name="theme-color" content="#070b14">
+<meta property="og:title" content="PostOffice - multi-protocol message bridge">
+<meta property="og:description" content="Route MQTT, AMQP, Kafka and NanoMQ with a Rust data plane and Redis control plane.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/social-card.svg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/logo-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="design/tokens.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--cyan)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+nav{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 88%,transparent);position:sticky;top:0;z-index:10;backdrop-filter:blur(6px)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:700;letter-spacing:.2em;font-size:14px;color:var(--text);text-decoration:none}
+.brand img{width:30px;height:30px}
+.links{display:flex;gap:18px;font-family:var(--mono);font-size:13px;align-items:center}
+.links a{color:var(--muted);text-decoration:none}.links a:hover{color:var(--neon)}
+#theme{font-family:var(--mono);font-size:12px;background:none;color:var(--muted);border:1px solid var(--line-strong);padding:4px 8px;cursor:pointer}
+.hero{padding:56px 0 32px;text-align:left}
+.eyebrow{font-family:var(--mono);font-size:13px;color:var(--cyan);letter-spacing:.18em;margin-bottom:16px}
+h1{font-family:var(--mono);font-size:clamp(32px,7vw,60px);line-height:1.05;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:20px 0 28px;max-width:760px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:36px}
+.hero-img{width:100%;height:auto;display:block;border:1px solid var(--line-strong)}
+section{padding:56px 0}
+h2{font-family:var(--mono);font-size:clamp(20px,4vw,28px);letter-spacing:.08em;margin-bottom:8px}
+h2::before{content:"// ";color:var(--neon)}
+.sub{color:var(--muted);margin-bottom:28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.feat h3{font-family:var(--mono);font-size:15px;margin:12px 0 6px;color:var(--text)}
+.feat p{color:var(--muted);font-size:14px}
+.arch{width:100%;height:auto;display:block}
+pre{background:var(--surface);border:1px solid var(--line);padding:16px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--text)}
+.links-list{list-style:none;display:grid;gap:10px;font-family:var(--mono);font-size:14px}
+footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-family:var(--mono);font-size:12px}
+@media(max-width:560px){.links a.opt{display:none}.links{gap:10px}nav .brand{letter-spacing:0;font-size:13px}}
+</style>
+</head>
+<body class="bp-grid">
+<nav><div class="wrap"><a class="brand" href="#top"><img src="assets/logo-mark.svg" alt="">POSTOFFICE</a>
+<div class="links"><a class="opt" href="#features">Features</a><a class="opt" href="#architecture">Architecture</a><a href="#quickstart">Quickstart</a><a href="https://github.com/bsommers/PostOffice">GitHub</a><button id="theme" type="button" aria-label="Toggle theme">THEME</button></div></div></nav>
+<main id="top" class="wrap">
+<header class="hero">
+<p class="eyebrow">DWG PO-001 / REV v3.1.0</p>
+<h1><span class="glow">PostOffice</span><br>multi-protocol message bridge</h1>
+<p class="lede">A hybrid Rust/Python bridge routing MQTT, AMQP (RabbitMQ), Apache Kafka and NanoMQ with verified delivery guarantees, a Redis control plane and horizontally scaled data plane workers.</p>
+<div class="cta"><a class="btn" href="#quickstart">GET STARTED</a><a class="btn ghost" href="https://github.com/bsommers/PostOffice/blob/main/docs/USER_GUIDE.md">USER GUIDE</a><a class="btn ghost" href="https://github.com/bsommers/PostOffice">GITHUB</a></div>
+<img class="hero-img" src="assets/hero-blueprint.svg" alt="Blueprint of a post office: MQTT, AMQP, Kafka and NanoMQ lanes converge on a router that feeds a pigeonhole wall of topics" width="1600" height="900">
+</header>
+<section id="features"><h2>FEATURES</h2><p class="sub">One facade, every protocol.</p>
+<div class="grid">
+<article class="bp-card feat"><img src="assets/icons/mqtt.svg" alt="" width="48" height="48"><h3>MQTT / NanoMQ edge</h3><p>Pub/sub and edge brokers with QoS 1 PUBACK tracking.</p></article>
+<article class="bp-card feat"><img src="assets/icons/amqp.svg" alt="" width="48" height="48"><h3>AMQP (RabbitMQ)</h3><p>Queues with publisher confirms and semantic translation.</p></article>
+<article class="bp-card feat"><img src="assets/icons/kafka.svg" alt="" width="48" height="48"><h3>Apache Kafka</h3><p>Partitioned logs with contiguous offset watermarks.</p></article>
+<article class="bp-card feat"><img src="assets/icons/nanomq.svg" alt="" width="48" height="48"><h3>NanoMQ</h3><p>Lightweight edge broker with store-and-forward.</p></article>
+<article class="bp-card feat"><img src="assets/icons/router.svg" alt="" width="48" height="48"><h3>TopicTrie Router</h3><p>O(k) wildcard matching, + and #, $-prefix isolation.</p></article>
+<article class="bp-card feat"><img src="assets/icons/control-plane.svg" alt="" width="48" height="48"><h3>Control Plane</h3><p>Redis-backed admin with HMAC-signed config events.</p></article>
+<article class="bp-card feat"><img src="assets/icons/data-plane.svg" alt="" width="48" height="48"><h3>Data Plane</h3><p>Rust core, horizontally scaled workers, canary rollout.</p></article>
+<article class="bp-card feat"><img src="assets/icons/observability.svg" alt="" width="48" height="48"><h3>Observability</h3><p>Prometheus /metrics, health probes, budgeted DLQ.</p></article>
+</div></section>
+<section id="architecture"><h2>ARCHITECTURE</h2><p class="sub">Control plane writes to Redis; data plane workers route traffic without restarts.</p>
+<div class="bp-card"><svg class="arch" viewBox="0 0 900 260" role="img" aria-labelledby="at" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13"><title id="at">Architecture: control plane to Redis to data plane workers to brokers</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--neon)"/></marker></defs>
+<g fill="var(--surface)" stroke="var(--neon)" stroke-width="1.5"><rect x="10" y="100" width="150" height="60"/><rect x="230" y="100" width="130" height="60"/><rect x="430" y="100" width="170" height="60"/><rect x="690" y="20" width="200" height="44"/><rect x="690" y="82" width="200" height="44"/><rect x="690" y="144" width="200" height="44"/><rect x="690" y="206" width="200" height="44"/></g>
+<g fill="none" stroke="var(--neon)" stroke-width="1.5" marker-end="url(#a)"><path d="M160 130H228"/><path d="M360 130H428"/><path d="M600 130H650"/><path d="M650 130V42H688"/><path d="M650 104H688"/><path d="M650 130V166H688"/><path d="M650 130V228H688"/></g>
+<g fill="var(--text)" text-anchor="middle"><text x="85" y="135">CONTROL PLANE</text><text x="295" y="135">REDIS</text><text x="515" y="135">DATA PLANE (RUST)</text><text x="790" y="47">MQTT</text><text x="790" y="109">AMQP</text><text x="790" y="171">KAFKA</text><text x="790" y="233">NANOMQ</text></g>
+<g fill="var(--muted)" text-anchor="middle" font-size="11"><text x="195" y="120">config</text><text x="395" y="120">streams</text></g></svg></div></section>
+<section id="quickstart"><h2>QUICKSTART</h2><p class="sub">Bridge MQTT sensors into Kafka with JSON to Avro conversion.</p>
+<pre><code>from postoffice.app import PostOffice
+
+# Initialize PostOffice (enable Native Rust Engine with use_native_engine=True)
+po = PostOffice(
+    metrics_port=9100,
+    dlq_broker="kafka_bus",
+    dlq_topic="deadletter.events",
+    use_native_engine=True,
+)
+
+# Register broker connections
+po.add_broker("mqtt_edge", "mqtt", host="localhost", port=1883)
+po.add_broker("kafka_bus", "kafka", bootstrap_servers="localhost:9092")
+
+# Add a wildcard route with dynamic schema conversion
+po.add_route(
+    source_broker="mqtt_edge",
+    source_topic="sensors/+/telemetry",
+    target_broker="kafka_bus",
+    target_topic="analytics.readings",
+    input_format="json",
+    output_format="avro",
+    output_schema="SensorReading",
+    wire_format=True,
+)
+
+# Start connections
+po.start()</code></pre></section>
+<section id="docs"><h2>DOCUMENTATION</h2><ul class="links-list">
+<li><a href="https://github.com/bsommers/PostOffice/blob/main/docs/USER_GUIDE.md">docs/USER_GUIDE.md</a> - installation, routing, API reference</li>
+<li><a href="https://github.com/bsommers/PostOffice/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> - deep architecture and protocol mapping</li>
+<li><a href="https://github.com/bsommers/PostOffice">Source repository</a></li></ul></section>
+</main>
+<footer><div class="wrap">POSTOFFICE / REV v3.1.0 / SCALE 1:1</div></footer>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById("theme");
+try{var s=localStorage.getItem("po-theme");if(s)r.setAttribute("data-theme",s)}catch(e){}
+b.addEventListener("click",function(){var d=r.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");var n=d==="dark"?"light":"dark";r.setAttribute("data-theme",n);try{localStorage.setItem("po-theme",n)}catch(e){}});})();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+<title id="t">Kafka icon</title>
+<defs></defs>
+<g fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d='M6 16h40M6 32h40M6 48h40'/><path d='M14 11v10M26 11v10M38 11v10M14 27v10M26 27v10M14 43v10M26 43v10M38 43v10'/><path d='M50 16h8M50 32h8M50 48h8M54 12l4 4-4 4M54 28l4 4-4 4M54 44l4 4-4 4'/></g>
+</svg>

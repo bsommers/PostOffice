@@ -1,0 +1,65 @@
+/* PostOffice design tokens - blueprint / TRON neon. Copy freely. */
+:root {
+  --bg: #070b14; --surface: #0d1424; --line: #1e2a44; --line-strong: #2c3d63;
+  --text: #e6edf7; --muted: #8a9ab5; --cyan: #38bdf8; --indigo: #818cf8;
+  --neon: #00e5ff; --neon-glow: rgba(0, 229, 255, .55);
+  --grid: 64px;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f7fc; --surface: #ffffff; --line: #d3deec; --line-strong: #9fb6d3;
+    --text: #0b1730; --muted: #4a5d7a; --cyan: #0a7fb8; --indigo: #4f46e5;
+    --neon: #0086a8; --neon-glow: rgba(0, 134, 168, .3); color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f3f7fc; --surface: #ffffff; --line: #d3deec; --line-strong: #9fb6d3;
+  --text: #0b1730; --muted: #4a5d7a; --cyan: #0a7fb8; --indigo: #4f46e5;
+  --neon: #0086a8; --neon-glow: rgba(0, 134, 168, .3); color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #070b14; --surface: #0d1424; --line: #1e2a44; --line-strong: #2c3d63;
+  --text: #e6edf7; --muted: #8a9ab5; --cyan: #38bdf8; --indigo: #818cf8;
+  --neon: #00e5ff; --neon-glow: rgba(0, 229, 255, .55); color-scheme: dark;
+}
+
+/* blueprint grid background */
+.bp-grid {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: var(--grid) var(--grid);
+  background-position: -1px -1px;
+}
+
+/* card with four corner brackets */
+.bp-card {
+  position: relative; background: var(--surface);
+  border: 1px solid var(--line); padding: 20px;
+}
+.bp-card::before, .bp-card::after {
+  content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+  border: 2px solid var(--neon);
+}
+.bp-card::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.bp-card::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+/* neon glow */
+.glow { color: var(--neon); text-shadow: 0 0 6px var(--neon-glow), 0 0 18px var(--neon-glow); }
+img.glow, svg.glow { filter: drop-shadow(0 0 6px var(--neon-glow)); }
+
+/* button */
+.btn {
+  display: inline-block; font-family: var(--mono); font-size: 13px; letter-spacing: .06em;
+  padding: 12px 22px; color: var(--neon); background: transparent;
+  border: 1px solid var(--neon); text-decoration: none; cursor: pointer;
+  transition: box-shadow .15s, background .15s;
+}
+.btn:hover { background: var(--neon-glow); color: var(--text); box-shadow: 0 0 14px var(--neon-glow); }
+.btn.ghost { color: var(--muted); border-color: var(--line-strong); }
+.btn.ghost:hover { color: var(--text); background: transparent; box-shadow: none; border-color: var(--neon); }
+.btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
