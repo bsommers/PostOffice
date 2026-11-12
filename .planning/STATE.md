@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 milestone: v3.2
 milestone_name: Observability Exports (OpenTelemetry)
-status: planning
-last_updated: "2026-11-12T03:21:00.301Z"
+status: ready_to_plan
+last_updated: "2026-11-12T03:30:00.000Z"
 last_activity: 2026-11-11
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,32 @@ progress:
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-11-05)
+See: `.planning/PROJECT.md` (updated 2026-11-11)
 
 **Core value:** Seamlessly route and translate messaging payloads and delivery semantics across heterogeneous pub/sub, streaming, and queueing protocols with zero message loss.
-**Current focus:** Milestone `v3.0.0` + Post-`v3.0` Tracks 1–4 (`SDK-01`, `EDGE-01`, `INT-01`, `FLT-01`, `ADPT-01`) complete, documented, and verified (`616` Python unit tests + `8` Rust unit/fuzz tests + `71/71` dual-engine conformance vectors passing).
+**Current focus:** Milestone v3.2 Observability Exports (OpenTelemetry) — Phase 9 (Native Metrics Parity) is next. Baseline: v3.1 shipped with `616` Python unit tests, `8` Rust tests, and `71/71` dual-engine conformance vectors passing.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 9 of 14 (Native Metrics Parity)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-11-11 — Milestone v3.2 started
+Status: Ready to plan
+Last activity: 2026-11-11 — v3.2 roadmap created (Phases 9-14, 13/13 mapped requirements covered)
+
+Progress: [░░░░░░░░░░] 0% (0/6 v3.2 phases)
+
+## v3.2 Phase Map
+
+| Phase | Name | Requirements |
+|-------|------|--------------|
+| 9 | Native Metrics Parity | NMET-01, NMET-02, NMET-03, NMET-04 |
+| 10 | Python OTLP Metrics Export & Safety Gates | OTEL-01, OTEL-06 |
+| 11 | Native OTLP Metrics Export | OTEL-02 |
+| 12 | Distributed Tracing & Context Propagation | OTEL-03, OTEL-04 |
+| 13 | OTLP Logs & DLQ Event Export | OTEL-05 |
+| 14 | Control Plane Runtime Config & Route-Filter Validation | OTEL-07, CPL-01, CPL-02 |
+
+Deferred by design (unmapped): `RTEL-01` (recognizer-telemetry integration, scope TBD). Backlog: `999.1` Raft / HA control plane (future).
 
 ## Performance Metrics
 
@@ -50,7 +65,7 @@ Last activity: 2026-11-11 — Milestone v3.2 started
 | Phase 8: Backpressure, Circuit Breakers & Hot-Reload | 2/2 | 0.33h | 10m |
 
 **Recent Trend:**
-- Trend: Milestone v2.1 (`RES-01`, `RES-02`, `RES-03`) completed and verified; 94/94 unit tests passing hermetically in 0.55s.
+- Trend: v3.0 and v3.1 shipped (tags `v3.0.0`, `v3.1.0`); v3.2 roadmap defined, no v3.2 plans executed yet.
 
 ## Accumulated Context
 
@@ -70,11 +85,33 @@ Last activity: 2026-11-11 — Milestone v3.2 started
 - **Dead Letter Queue:** Structured JSON envelopes with base64 binary encoding fallback and anti-recursion protection (`requeue=False`).
 - **Distributed State:** Use Redis hashes and PubSub channel `postoffice:config_updates` for real-time cluster coordination.
 - **Hermetic Testing:** 100% offline unit tests without external broker dependencies.
+- **v3.2 phase ordering:** Native metrics parity (Phase 9) comes first because it fixes the canonical metric/label set that both OTLP exporters (Phases 10-11) must mirror.
+- **v3.2 safety gate (OTEL-06):** The opt-in, bounded, drop-oldest export pipeline is built once in Phase 10 and reused by native metrics, tracing, and logs; later phases re-verify it for their signal but do not own the requirement.
+- **v3.2 native export constraint (OTEL-02):** No new third-party Rust dependencies; the edge profile (`scripts/verify_edge_profile.py`) must stay within its size budget.
+- **v3.2 control plane grouping:** Route-filter validation and docs (CPL-01/02) ride with runtime OTel config (OTEL-07) in Phase 14 since both are ControlPlane/admin-surface changes; CPL has no upstream dependencies and can be split out earlier if desired.
+- **v3.2 deferred:** `RTEL-01` (recognizer-telemetry) is intentionally unmapped until the repo and scope are supplied. Raft / HA control plane is parked as backlog `999.1`.
 
 ### Technical Constraints
 
 - Python 3.12+ runtime compatibility
 - Zero data loss guarantees when translating between at-least-once systems
+- OTel export is opt-in, off by default, and must never block or drop routing (bounded buffer, drop-oldest)
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- Phase 10: choose between the `opentelemetry-*` Python SDK as an optional extra and a hand-rolled OTLP/HTTP encoder that can share a wire-format design with the native exporter (research flag for plan-phase).
+- Phase 12: MQTT 3.1.1 has no user properties; only MQTT 5 can carry `traceparent`. Plans must define the new-trace fallback for header-less ingress.
+- Phase 13: DLQ envelopes contain message payloads; the plan must decide that exported DLQ log events carry reason/route/broker metadata and not raw payload content.
+
+## Session Continuity
+
+Last session: 2026-11-11
+Stopped at: v3.2 roadmap created; ready to run `/gsd-plan-phase 9`.
+Resume file: None
 
 ---
-*Last updated: 2026-10-18 after Milestone v2.1 completion*
+*Last updated: 2026-11-11 after v3.2 roadmap creation*

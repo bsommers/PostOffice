@@ -33,7 +33,7 @@
 
 ## Future Requirements
 
-- Raft / HA control plane (backlog)
+- Raft / HA control plane (backlog, tracked as ROADMAP Backlog `999.1`)
 
 ## Out of Scope
 
@@ -47,6 +47,23 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| NMET-01 | Phase 9 | Pending |
+| NMET-02 | Phase 9 | Pending |
+| NMET-03 | Phase 9 | Pending |
+| NMET-04 | Phase 9 | Pending |
+| OTEL-01 | Phase 10 | Pending |
+| OTEL-06 | Phase 10 | Pending |
+| OTEL-02 | Phase 11 | Pending |
+| OTEL-03 | Phase 12 | Pending |
+| OTEL-04 | Phase 12 | Pending |
+| OTEL-05 | Phase 13 | Pending |
+| OTEL-07 | Phase 14 | Pending |
+| CPL-01 | Phase 14 | Pending |
+| CPL-02 | Phase 14 | Pending |
+| RTEL-01 | Unmapped by design (future, scope TBD) | Deferred |
+
+**Coverage:** 13/13 mapped v3.2 requirements assigned to exactly one phase; `RTEL-01` intentionally deferred (not counted).
 
 ---
 *Requirements defined: 2026-11-11*
+*Traceability updated: 2026-11-11 after v3.2 roadmap creation*
